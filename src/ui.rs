@@ -25,6 +25,18 @@ const SUCCESS: Color32 = Color32::from_rgb(39, 174, 96);
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page { Install, Installed, Updates, Settings }
 
+impl Page {
+    /// Breeze-style glyph and label shown together in the sidebar, matching KDE System Settings.
+    const fn icon_and_label(self) -> (&'static str, &'static str) {
+        match self {
+            Page::Install => ("⬇", "Install"),
+            Page::Installed => ("▦", "Installed Applications"),
+            Page::Updates => ("⟳", "Updates"),
+            Page::Settings => ("⚙", "Settings"),
+        }
+    }
+}
+
 /// UI-owned state. Archive work is performed in a worker so the window remains interactive.
 pub struct TarDropApp {
     queue: VecDeque<PathBuf>,
@@ -205,7 +217,7 @@ impl TarDropApp {
                 ui.label(RichText::new(if hovering { "Release to add archive" } else { "Drop an archive here" }).size(24.0).strong());
                 ui.label(if hovering { "TarDrop will validate it before making any changes." } else { "Tar, gzip, xz, bzip2, and ZIP archives are supported." });
                 ui.add_space(12.0);
-                if ui.button(RichText::new("Open archive…").strong()).clicked() || response.clicked() {
+                if ui.button(RichText::new("Open archive…").strong()).on_hover_text("Choose one or more archives from a file dialog instead of dragging them in.").clicked() || response.clicked() {
                     self.choose_archives();
                 }
             });
@@ -252,9 +264,9 @@ impl TarDropApp {
                 });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Launch").clicked() { let _ = Command::new(&app.executable).spawn(); }
-                    if ui.button("Open folder").clicked() { let _ = Command::new("xdg-open").arg(&app.directory).spawn(); }
-                    if ui.button(RichText::new("Uninstall").color(ui.visuals().error_fg_color)).clicked() { uninstall = Some(index); }
+                    if ui.button("▶ Launch").on_hover_text("Start this application now.").clicked() { let _ = Command::new(&app.executable).spawn(); }
+                    if ui.button("📁 Open folder").on_hover_text("Show the installed files in your file manager.").clicked() { let _ = Command::new("xdg-open").arg(&app.directory).spawn(); }
+                    if ui.button(RichText::new("🗑 Uninstall").color(ui.visuals().error_fg_color)).on_hover_text("Remove this application and its launcher. This cannot be undone.").clicked() { uninstall = Some(index); }
                 });
             });
             ui.add_space(6.0);
@@ -288,14 +300,14 @@ impl eframe::App for TarDropApp {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("◉").size(25.0).color(ACCENT));
                 ui.vertical(|ui| { ui.label(RichText::new("TarDrop").size(20.0).strong()); ui.small("Portable application installer"); });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| { ui.label(RichText::new("User-only • No sudo").color(ui.visuals().weak_text_color())); });
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| { ui.label(RichText::new("User-only • No sudo").color(ui.visuals().weak_text_color())).on_hover_text("TarDrop never asks for your password and never installs system-wide."); });
             });
         });
 
-        egui::CentralPanel::default().frame(Frame::new().inner_margin(Margin::symmetric(22, 18))).show(context, |ui| {
+        self.sidebar(context);
+
+        egui::CentralPanel::default().frame(Frame::new().inner_margin(Margin::symmetric(24, 18))).show(context, |ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                self.page_navigation(ui);
-                ui.add_space(14.0);
                 match self.page {
                     Page::Install => self.install_page(ui, hovered_files),
                     Page::Installed => self.records_page(ui, false),
@@ -310,18 +322,40 @@ impl eframe::App for TarDropApp {
 }
 
 impl TarDropApp {
-    /// Presents compact page controls without hiding ongoing installation or update work.
-    fn page_navigation(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            for (page, label) in [(Page::Install, "Install"), (Page::Installed, "Installed Applications"), (Page::Updates, "Updates"), (Page::Settings, "Settings")] {
+    /// Draws the KDE System Settings-style category list used to switch pages.
+    ///
+    /// Kirigami/Breeze apps put page navigation in a persistent left sidebar rather than a
+    /// top tab strip, so the current page stays visible and reachable with one click at all
+    /// times, even while a background install or update is running.
+    fn sidebar(&mut self, context: &egui::Context) {
+        egui::SidePanel::left("sidebar").resizable(false).exact_width(196.0).frame(Frame::new().fill(context.style().visuals.faint_bg_color).inner_margin(Margin::symmetric(8, 12))).show(context, |ui| {
+            for page in [Page::Install, Page::Installed, Page::Updates, Page::Settings] {
+                let (icon, label) = page.icon_and_label();
                 let selected = self.page == page;
-                if ui.selectable_label(selected, label).clicked() { self.page = page; }
+                let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::click());
+                if selected {
+                    ui.painter().rect(rect, CornerRadius::same(4), ACCENT.linear_multiply(0.22), Stroke::new(1.0_f32, ACCENT), egui::StrokeKind::Inside);
+                } else if response.hovered() {
+                    ui.painter().rect(rect, CornerRadius::same(4), ui.visuals().widgets.hovered.bg_fill, Stroke::NONE, egui::StrokeKind::Inside);
+                }
+                ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                        ui.add_space(10.0);
+                        ui.label(RichText::new(icon).size(16.0).color(if selected { ACCENT } else { ui.visuals().text_color() }));
+                        ui.add_space(8.0);
+                        ui.label(RichText::new(label).color(if selected { ACCENT } else { ui.visuals().text_color() }).strong());
+                    });
+                });
+                if response.clicked() { self.page = page; }
+                ui.add_space(2.0);
             }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if let Some(work) = &self.update_busy { ui.label(RichText::new(work).color(ACCENT)); }
-            });
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(6.0);
+            if let Some(work) = &self.update_busy {
+                ui.horizontal(|ui| { ui.spinner(); ui.label(RichText::new(work).color(ACCENT).small()); });
+            }
         });
-        ui.separator();
     }
 
     /// Combines the drop surface, active queue, session actions, and technical log on Install.
@@ -359,12 +393,13 @@ impl TarDropApp {
                 });
                 ui.add_space(7.0);
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button("Launch").clicked() { launch_record(&record); }
-                    if ui.button("Open folder").clicked() { let _ = Command::new("xdg-open").arg(&record.install_path).spawn(); }
-                    if ui.button("Check updates").clicked() { self.check_record(record.clone()); }
+                    if ui.button("▶ Launch").on_hover_text("Start this application now.").clicked() { launch_record(&record); }
+                    if ui.button("📁 Open folder").on_hover_text("Show the installed files in your file manager.").clicked() { let _ = Command::new("xdg-open").arg(&record.install_path).spawn(); }
+                    if ui.button("⟳ Check updates").on_hover_text("Look for a newer version using this application's configured source. TarDrop only checks when you press this.").clicked() { self.check_record(record.clone()); }
                     let can_update = record.latest_version.as_deref().is_some_and(|latest| record.version.as_deref() != Some(latest));
-                    if ui.add_enabled(can_update && self.update_receiver.is_none(), egui::Button::new("Update")).clicked() { self.update_record(record.clone()); }
-                    if ui.button(RichText::new("Uninstall").color(ui.visuals().error_fg_color)).clicked() { uninstall = Some(record.clone()); }
+                    let update_hover = if can_update { "Download and install the newer version, keeping a rollback copy in case it fails." } else { "Check updates first; this becomes available once a newer version is found." };
+                    if ui.add_enabled(can_update && self.update_receiver.is_none(), egui::Button::new("⬆ Update")).on_hover_text(update_hover).clicked() { self.update_record(record.clone()); }
+                    if ui.button(RichText::new("🗑 Uninstall").color(ui.visuals().error_fg_color)).on_hover_text("Remove this application and its launcher. This cannot be undone.").clicked() { uninstall = Some(record.clone()); }
                 });
                 if self.update_busy.as_deref().is_some_and(|status| status.contains(&record.name)) { ui.add(egui::ProgressBar::new(0.5).animate(true).text("Working…")); }
             });
@@ -378,10 +413,11 @@ impl TarDropApp {
         ui.label(RichText::new("Update settings").size(22.0).strong()); ui.add_space(8.0);
         card(ui, |ui| {
             let mut changed = false;
-            changed |= ui.checkbox(&mut self.settings.check_automatically, "Check for updates automatically").changed();
-            changed |= ui.checkbox(&mut self.settings.notify_beta_releases, "Notify about beta releases").changed();
-            changed |= ui.checkbox(&mut self.settings.check_on_startup, "Check on startup").changed();
-            ui.add_space(8.0); ui.label("Update interval");
+            changed |= ui.checkbox(&mut self.settings.check_automatically, "Check for updates automatically").on_hover_text("Lets TarDrop check configured sources on its own, on the schedule below.").changed();
+            changed |= ui.checkbox(&mut self.settings.notify_beta_releases, "Notify about beta releases").on_hover_text("Include pre-release versions when reporting an available update.").changed();
+            changed |= ui.checkbox(&mut self.settings.check_on_startup, "Check on startup").on_hover_text("Run one automatic check shortly after TarDrop opens, if due.").changed();
+            ui.add_space(8.0); ui.label(RichText::new("Update interval").strong()); ui.small("How often automatic checks are allowed to run.");
+            ui.add_space(2.0);
             for (interval, label) in [(UpdateInterval::Daily, "Daily"), (UpdateInterval::Weekly, "Weekly"), (UpdateInterval::Monthly, "Monthly"), (UpdateInterval::Never, "Never")] { changed |= ui.radio_value(&mut self.settings.interval, interval, label).changed(); }
             if changed { if let Err(error) = InstalledDatabase::save_settings(&self.settings) { self.message = Some((false, format!("Could not save settings: {error}"))); } }
         });
@@ -404,15 +440,16 @@ impl TarDropApp {
                 ui.small("Choose whether to replace it or retain both installations.");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new("Replace existing").strong()).clicked() { self.replace_prompt = None; self.start_worker(path.clone(), ExistingChoice::Replace, None); }
-                    if ui.button("Keep both").clicked() { self.replace_prompt = None; self.start_worker(path.clone(), ExistingChoice::KeepBoth, None); }
+                    if ui.button(RichText::new("Replace existing").strong()).on_hover_text("Remove the current installation and its launcher, then install this archive in its place.").clicked() { self.replace_prompt = None; self.start_worker(path.clone(), ExistingChoice::Replace, None); }
+                    if ui.button("Keep both").on_hover_text("Install this archive alongside the existing one, under a separate numbered folder.").clicked() { self.replace_prompt = None; self.start_worker(path.clone(), ExistingChoice::KeepBoth, None); }
                     if ui.button("Cancel").clicked() { self.replace_prompt = None; self.log.push("Installation cancelled.".into()); self.start_next(); }
                 });
             });
         }
         if let Some((path, choice, candidates)) = self.launcher_prompt.clone() {
             modal(context, "Choose application launcher", |ui| {
-                ui.label("Several launchers look equally suitable. Select the application’s main entry point:");
+                ui.label("Several launchers look equally suitable. Select the application's main entry point:");
+                ui.small("A higher score means TarDrop is more confident that file is the right one to launch.");
                 ui.add_space(8.0);
                 egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
                     for candidate in &candidates {
@@ -434,14 +471,27 @@ impl TarDropApp {
     }
 }
 
-/// Applies restrained rounded controls and spacing while retaining the current system theme.
+/// Applies Breeze-proportioned controls and spacing while retaining the current system theme.
+///
+/// Breeze widgets use a small, near-square corner radius (not the large "pill" rounding common
+/// in other toolkits) and a selection color drawn straight from the Breeze accent blue.
 fn configure_visuals(context: &egui::Context) {
     context.style_mut(|style| {
         style.spacing.item_spacing = Vec2::new(8.0, 8.0);
-        style.spacing.button_padding = Vec2::new(12.0, 7.0);
-        style.visuals.widgets.inactive.corner_radius = CornerRadius::same(7);
-        style.visuals.widgets.hovered.corner_radius = CornerRadius::same(7);
-        style.visuals.widgets.active.corner_radius = CornerRadius::same(7);
+        style.spacing.button_padding = Vec2::new(12.0, 6.0);
+        style.spacing.window_margin = Margin::same(12);
+        for widgets in [
+            &mut style.visuals.widgets.inactive,
+            &mut style.visuals.widgets.hovered,
+            &mut style.visuals.widgets.active,
+            &mut style.visuals.widgets.noninteractive,
+        ] {
+            widgets.corner_radius = CornerRadius::same(4);
+        }
+        style.visuals.window_corner_radius = CornerRadius::same(6);
+        style.visuals.selection.bg_fill = ACCENT.linear_multiply(0.55);
+        style.visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
+        style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT);
     });
 }
 

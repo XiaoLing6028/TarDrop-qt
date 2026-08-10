@@ -19,8 +19,8 @@ use ui::TarDropApp;
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([780.0, 560.0])
-            .with_min_inner_size([600.0, 420.0])
+            .with_inner_size([880.0, 600.0])
+            .with_min_inner_size([680.0, 440.0])
             .with_drag_and_drop(true),
         ..Default::default()
     };
