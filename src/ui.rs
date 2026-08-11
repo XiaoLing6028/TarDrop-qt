@@ -346,7 +346,7 @@ impl TarDropApp {
                         ui.add(egui::Label::new(RichText::new(label).color(if selected { ACCENT } else { ui.visuals().text_color() }).strong()).selectable(false));
                     });
                 });
-                if response.clicked() { self.page = page; }
+                if response.clicked() { self.page = page; context.request_repaint(); }
                 ui.add_space(2.0);
             }
             ui.add_space(10.0);
