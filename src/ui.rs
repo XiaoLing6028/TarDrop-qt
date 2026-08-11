@@ -341,9 +341,9 @@ impl TarDropApp {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                     ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                         ui.add_space(10.0);
-                        ui.label(RichText::new(icon).size(16.0).color(if selected { ACCENT } else { ui.visuals().text_color() }));
+                        ui.add(egui::Label::new(RichText::new(icon).size(16.0).color(if selected { ACCENT } else { ui.visuals().text_color() })).selectable(false));
                         ui.add_space(8.0);
-                        ui.label(RichText::new(label).color(if selected { ACCENT } else { ui.visuals().text_color() }).strong());
+                        ui.add(egui::Label::new(RichText::new(label).color(if selected { ACCENT } else { ui.visuals().text_color() }).strong()).selectable(false));
                     });
                 });
                 if response.clicked() { self.page = page; }
