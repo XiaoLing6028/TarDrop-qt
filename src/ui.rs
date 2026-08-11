@@ -306,7 +306,10 @@ impl eframe::App for TarDropApp {
 
         self.sidebar(context);
 
-        egui::CentralPanel::default().frame(Frame::new().inner_margin(Margin::symmetric(24, 18))).show(context, |ui| {
+        // The frame must fill opaquely: eframe's default clear color is semi-transparent, so a
+        // frameless central panel blends over the previous frame instead of replacing it, leaving
+        // the old page visible after a sidebar switch until further frames wash it out.
+        egui::CentralPanel::default().frame(Frame::new().fill(context.style().visuals.panel_fill).inner_margin(Margin::symmetric(24, 18))).show(context, |ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 match self.page {
                     Page::Install => self.install_page(ui, hovered_files),
