@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.tardrop.TarDrop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>TarDrop</name>
+  <summary>Safely install portable application archives</summary>
+  <description>
+    <p>
+      TarDrop installs portable application archives into your own user account. Drop a
+      tar, tar.gz, tgz, tar.xz, tar.bz2, or zip archive onto its window: TarDrop extracts it
+      beneath ~/Applications, finds a native launcher inside it, and writes a per-user desktop
+      entry so the application appears in the Plasma application launcher and KRunner.
+    </p>
+    <p>
+      TarDrop never uses tar, unzip, a shell, or sudo, and never runs anything from an archive.
+      Absolute paths, traversal, symlinks, hard links, and device files are rejected outright.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.tardrop.TarDrop.desktop</launchable>
+  <categories>
+    <category>System</category>
+    <category>PackageManager</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>

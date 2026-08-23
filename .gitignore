@@ -1,2 +1,4 @@
-/target
-/CLAUDE.md
+/build/
+/build-*/
+compile_commands.json
+.cache/

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=TarDrop
+GenericName=Portable Application Installer
+Comment=Safely install portable application archives into your user account
+Exec=tardrop %F
+Icon=package-x-generic
+Terminal=false
+Categories=Qt;KDE;System;PackageManager;
+MimeType=application/x-tar;application/gzip;application/x-gzip;application/x-xz;application/x-bzip;application/x-bzip2;application/zip;application/x-compressed-tar;application/x-xz-compressed-tar;application/x-bzip-compressed-tar;
+Keywords=archive;tar;zip;install;portable;appimage;
+StartupNotify=true
+X-DBUS-StartupType=None
