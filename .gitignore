@@ -2,4 +2,4 @@
 /build-*/
 compile_commands.json
 .cache/
-/CLAUDE.md
+CLAUDE.md
