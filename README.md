@@ -7,6 +7,9 @@ writes a per-user launcher to `~/.local/share/applications`, so the application 
 Application Launcher, Kickoff, and KRunner.
 
 It is written in C++23 with Qt 6 Widgets and the KDE Frameworks, and targets Linux only.
+<img width="1032" height="672" alt="Screenshot_20260824_163405" src="https://github.com/user-attachments/assets/8a02755d-80e9-4fd3-a90d-bc3ce979ae32" />
+
+[Screencast_20260824_163614.webm](https://github.com/user-attachments/assets/f6ca7b26-900c-4f4d-b8b2-795fe918553f)
 
 ## Safety model
 
