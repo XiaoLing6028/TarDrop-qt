@@ -31,8 +31,8 @@ int main(int argc, char *argv[])
                      QStringLiteral(TARDROP_VERSION),
                      i18n("A safe, user-local installer for portable application archives"),
                      KAboutLicense::GPL_V3,
-                     i18n("© 2026 Frank16243"));
-    about.setHomepage(QStringLiteral("https://github.com/Frank16243/TarDrop-qt"));
+                     i18n("© 2026 XiaoLing6028"));
+    about.setHomepage(QStringLiteral("https://github.com/XiaoLing6028/TarDrop-qt"));
     about.setDesktopFileName(QStringLiteral("org.tardrop.TarDrop"));
     KAboutData::setApplicationData(about);
     KCrash::initialize();
