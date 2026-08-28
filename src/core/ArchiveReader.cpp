@@ -14,6 +14,7 @@
 
 #include <fcntl.h>
 #include <memory>
+#include <optional>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -183,6 +184,69 @@ Status writeRegularFile(struct archive *handle, const QString &output, mode_t mo
     return {};
 }
 
+/// Applies the member checks and reports what, if anything, they refuse.
+///
+/// Both the header scan and the extraction pass go through this function, so a package can never
+/// be described as safe by one and rejected by the other.
+std::optional<SecurityConcern> memberConcern(struct archive_entry *entry,
+                                             const QString &relative,
+                                             const Result<QString> &destination)
+{
+    if (!destination) {
+        // Containment is not a preference. A member that resolves outside the extraction root is
+        // refused even when the user has accepted everything else about the package.
+        return SecurityConcern{relative,
+                               relative.isEmpty()
+                                   ? i18nc("@item archive member", "an empty path")
+                                   : i18nc("@item archive member", "an unsafe path"),
+                               false};
+    }
+    // A hard link points at an already-extracted file and would let one member alias another.
+    if (archive_entry_hardlink(entry) != nullptr || archive_entry_hardlink_utf8(entry) != nullptr) {
+        return SecurityConcern{relative, i18nc("@item archive member", "a hard link"), true};
+    }
+    const mode_t filetype = archive_entry_filetype(entry);
+    if (filetype == AE_IFLNK) {
+        return SecurityConcern{relative, i18nc("@item archive member", "a symbolic link"), true};
+    }
+    if (filetype != AE_IFREG && filetype != AE_IFDIR) {
+        return SecurityConcern{relative,
+                               i18nc("@item archive member", "an unsupported special file"), true};
+    }
+    return std::nullopt;
+}
+
+/// The failure text used when a refused member stops the whole archive.
+QString concernMessage(const SecurityConcern &concern)
+{
+    if (concern.path.isEmpty()) {
+        return i18n("archive contains %1", concern.reason);
+    }
+    return i18n("archive contains %1: %2", concern.reason, concern.path);
+}
+
+/// The path a member is stored under, decoded the way the entry declares it.
+QString memberPath(struct archive_entry *entry)
+{
+    const char *rawPath = archive_entry_pathname_utf8(entry);
+    return rawPath ? QString::fromUtf8(rawPath) : QFile::decodeName(archive_entry_pathname(entry));
+}
+
+/// Opens `source` with exactly the one format and filter that were detected.
+Result<ArchiveReadPtr> openArchive(const QString &source, Format format)
+{
+    ArchiveReadPtr reader(archive_read_new());
+    if (!reader) {
+        return failure(i18n("could not create an archive reader"));
+    }
+    configureReader(reader.get(), format);
+    if (archive_read_open_filename(reader.get(), QFile::encodeName(source).constData(), kBlockSize)
+        != ARCHIVE_OK) {
+        return failure(readerError(reader.get(), i18n("could not open archive")));
+    }
+    return Result<ArchiveReadPtr>(std::move(reader));
+}
+
 } // namespace
 
 Result<Format> detect(const QString &path)
@@ -206,23 +270,52 @@ Result<Format> detect(const QString &path)
     return failure(i18n("Unsupported archive type. Use tar, tar.gz, tgz, tar.xz, tar.bz2, or zip."));
 }
 
-Status extract(const QString &source, Format format, const QString &destination)
+Result<QList<SecurityConcern>> inspect(const QString &source, Format format)
+{
+    // A lexical stand-in for the extraction root: the path checks are purely textual, and this pass
+    // must not create, or even name, anything on disk.
+    static const QString root = QStringLiteral("/tardrop");
+
+    const Result<ArchiveReadPtr> reader = openArchive(source, format);
+    if (!reader) {
+        return failure(reader.error());
+    }
+
+    QList<SecurityConcern> concerns;
+    while (true) {
+        struct archive_entry *entry = nullptr;
+        const int status = archive_read_next_header(reader->get(), &entry);
+        if (status == ARCHIVE_EOF) {
+            break;
+        }
+        if (status < ARCHIVE_WARN) {
+            return failure(readerError(reader->get(), i18n("could not read archive member")));
+        }
+        const QString relative = memberPath(entry);
+        if (const std::optional<SecurityConcern> concern =
+                memberConcern(entry, relative, safeDestination(root, relative))) {
+            concerns.append(*concern);
+        }
+    }
+    return concerns;
+}
+
+Status extract(const QString &source,
+               Format format,
+               const QString &destination,
+               MemberPolicy policy,
+               QList<SecurityConcern> *skipped)
 {
     if (!QDir().mkpath(destination)) {
         return failure(i18n("could not create extraction directory"));
     }
     const QString root = paths::clean(destination);
 
-    ArchiveReadPtr reader(archive_read_new());
-    if (!reader) {
-        return failure(i18n("could not create an archive reader"));
+    const Result<ArchiveReadPtr> opened = openArchive(source, format);
+    if (!opened) {
+        return failure(opened.error());
     }
-    configureReader(reader.get(), format);
-
-    if (archive_read_open_filename(reader.get(), QFile::encodeName(source).constData(), kBlockSize)
-        != ARCHIVE_OK) {
-        return failure(readerError(reader.get(), i18n("could not open archive")));
-    }
+    const ArchiveReadPtr &reader = *opened;
 
     while (true) {
         struct archive_entry *entry = nullptr;
@@ -234,33 +327,26 @@ Status extract(const QString &source, Format format, const QString &destination)
             return failure(readerError(reader.get(), i18n("could not read archive member")));
         }
 
-        const char *rawPath = archive_entry_pathname_utf8(entry);
-        const QString relative = rawPath ? QString::fromUtf8(rawPath)
-                                         : QFile::decodeName(archive_entry_pathname(entry));
+        const QString relative = memberPath(entry);
         const Result<QString> output = safeDestination(root, relative);
-        if (!output) {
-            return failure(output.error());
+
+        if (const std::optional<SecurityConcern> concern =
+                memberConcern(entry, relative, output)) {
+            // Consent lets a refused member be left out; it never lets one be written.
+            if (policy != MemberPolicy::SkipUnsafe || !concern->overridable) {
+                return failure(concernMessage(*concern));
+            }
+            if (skipped) {
+                skipped->append(*concern);
+            }
+            continue;
         }
 
-        // A hard link points at an already-extracted file and would let one member alias another.
-        if (archive_entry_hardlink(entry) != nullptr
-            || archive_entry_hardlink_utf8(entry) != nullptr) {
-            return failure(i18n("archive contains a hard link: %1", relative));
-        }
-
-        const mode_t filetype = archive_entry_filetype(entry);
-        if (filetype == AE_IFDIR) {
+        if (archive_entry_filetype(entry) == AE_IFDIR) {
             if (!QDir().mkpath(*output)) {
                 return failure(i18n("could not create %1", *output));
             }
             continue;
-        }
-        if (filetype == AE_IFLNK) {
-            return failure(i18n("archive contains a symbolic link: %1", relative));
-        }
-        if (filetype != AE_IFREG) {
-            return failure(
-                i18n("archive contains unsupported link or special file: %1", relative));
         }
 
         const QString parent = QFileInfo(*output).absolutePath();

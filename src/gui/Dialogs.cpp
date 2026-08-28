@@ -6,6 +6,7 @@
 
 #include <KLocalizedString>
 
+#include <QAbstractItemView>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -137,6 +138,76 @@ LauncherChoiceDialog::LauncherChoiceDialog(const QList<LauncherCandidate> &candi
             m_selected = m_candidates.at(row).relativePath;
         }
     });
+}
+
+SecurityWarningDialog::SecurityWarningDialog(const QString &archiveName,
+                                             const QList<SecurityConcern> &concerns,
+                                             QWidget *parent)
+    : QDialog(parent)
+{
+    setWindowTitle(i18nc("@title:window", "Security Check Failed"));
+    setModal(true);
+    setMinimumWidth(560);
+
+    auto *layout = new QVBoxLayout(this);
+    layout->setSpacing(10);
+
+    auto *headline = new QLabel(i18n(
+        "<b>%1</b> was rejected because it contains content TarDrop considers unsafe.",
+        archiveName.toHtmlEscaped()));
+    headline->setTextFormat(Qt::RichText);
+    headline->setWordWrap(true);
+    layout->addWidget(headline);
+
+    layout->addWidget(caption(i18np("One archive member failed a security check:",
+                                    "%1 archive members failed a security check:",
+                                    concerns.size())));
+
+    // The offending members are listed in full: the decision is only meaningful if the user can see
+    // what they are agreeing to.
+    auto *list = new QListWidget;
+    for (const SecurityConcern &concern : concerns) {
+        auto *item = new QListWidgetItem(
+            i18nc("@item:inlistbox archive member and why it was refused", "%1 — %2",
+                  concern.path, concern.reason));
+        item->setIcon(QIcon::fromTheme(QStringLiteral("dialog-warning")));
+        list->addItem(item);
+    }
+    // The list is a statement of fact, not a control: nothing in it is selectable or focusable.
+    list->setSelectionMode(QAbstractItemView::NoSelection);
+    list->setFocusPolicy(Qt::NoFocus);
+    // Short lists keep the dialog compact; longer ones scroll rather than filling the screen.
+    list->setMaximumHeight(180);
+    layout->addWidget(list, 1);
+
+    layout->addWidget(caption(
+        i18n("Such content usually means the archive was not built for this kind of installation, "
+             "but it can also be used to place files where you did not intend. Only continue if "
+             "you trust where this archive came from.")));
+    layout->addWidget(caption(
+        i18n("If you continue, the listed members are left out of the installation — they are "
+             "never extracted — so the application may be incomplete or fail to start.")));
+
+    auto *buttons = new QDialogButtonBox;
+    auto *proceed = buttons->addButton(i18nc("@action:button", "Install Anyway"),
+                                       QDialogButtonBox::DestructiveRole);
+    proceed->setIcon(QIcon::fromTheme(QStringLiteral("dialog-warning")));
+    proceed->setToolTip(i18nc("@info:tooltip",
+                              "Install the rest of this archive, omitting the members listed "
+                              "above."));
+    auto *cancel = buttons->addButton(i18nc("@action:button", "Keep Rejected"),
+                                      QDialogButtonBox::RejectRole);
+    cancel->setToolTip(i18nc("@info:tooltip", "Do not install this archive."));
+    // Cancelling is the safe answer, so it is what Return and Escape both do.
+    cancel->setDefault(true);
+    cancel->setFocus();
+
+    connect(proceed, &QPushButton::clicked, this, [this] {
+        m_accepted = true;
+        accept();
+    });
+    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+    layout->addWidget(buttons);
 }
 
 UpdateSourceDialog::UpdateSourceDialog(const InstalledRecord &record, QWidget *parent)

@@ -53,15 +53,17 @@ void InstallController::startNext()
         Q_EMIT existingInstallPrompt(path, paths::archiveStem(path));
         return;
     }
-    startWorker(path, ExistingChoice::KeepBoth, QString());
+    startWorker(path, ExistingChoice::KeepBoth, QString(), false);
 }
 
 void InstallController::startWorker(const QString &path,
                                     ExistingChoice choice,
-                                    const QString &selectedLauncher)
+                                    const QString &selectedLauncher,
+                                    bool allowUnsafeContent)
 {
     m_current = path;
     m_currentChoice = choice;
+    m_currentAllowUnsafe = allowUnsafeContent;
     m_running = true;
     Q_EMIT logLine(i18n("Installing %1…", path));
     Q_EMIT stateChanged();
@@ -79,9 +81,10 @@ void InstallController::startWorker(const QString &path,
             Qt::QueuedConnection);
     };
 
-    m_watcher->setFuture(QtConcurrent::run([path, choice, selectedLauncher, log] {
-        return installer::install(path, choice, selectedLauncher, log);
-    }));
+    m_watcher->setFuture(
+        QtConcurrent::run([path, choice, selectedLauncher, log, allowUnsafeContent] {
+            return installer::install(path, choice, selectedLauncher, log, allowUnsafeContent);
+        }));
 }
 
 void InstallController::finish()
@@ -92,17 +95,26 @@ void InstallController::finish()
     m_current.clear();
     m_running = false;
 
-    if (!outcome) {
-        Q_EMIT failed(i18n("Installation failed: %1", outcome.error()));
-    } else if (const auto *app = std::get_if<InstalledApp>(&*outcome)) {
-        Q_EMIT installed(*app);
-    } else {
-        const auto &choiceNeeded = std::get<NeedsLauncherChoice>(*outcome);
+    /// Parks the queue on this archive until the modal decision it raised has been answered.
+    const auto await = [this, path, choice] {
         m_waitingForAnswer = true;
         m_pendingArchive = path;
         m_currentChoice = choice;
         Q_EMIT stateChanged();
-        Q_EMIT launcherPrompt(path, choiceNeeded.candidates);
+    };
+
+    if (!outcome) {
+        Q_EMIT failed(i18n("Installation failed: %1", outcome.error()));
+    } else if (const auto *app = std::get_if<InstalledApp>(&*outcome)) {
+        Q_EMIT installed(*app);
+    } else if (const auto *launcher = std::get_if<NeedsLauncherChoice>(&*outcome)) {
+        await();
+        Q_EMIT launcherPrompt(path, launcher->candidates);
+        return;
+    } else {
+        const auto &refused = std::get<NeedsSecurityConfirmation>(*outcome);
+        await();
+        Q_EMIT securityPrompt(path, refused.concerns);
         return;
     }
 
@@ -125,7 +137,7 @@ void InstallController::answerExisting(ExistingChoice choice)
         startNext();
         return;
     }
-    startWorker(path, choice, QString());
+    startWorker(path, choice, QString(), false);
 }
 
 void InstallController::answerLauncher(const QString &relativePath)
@@ -135,6 +147,8 @@ void InstallController::answerLauncher(const QString &relativePath)
     }
     const QString path = m_pendingArchive;
     const ExistingChoice choice = m_currentChoice;
+    // An archive whose content the user already accepted must not be asked about a second time.
+    const bool allowUnsafe = m_currentAllowUnsafe;
     m_waitingForAnswer = false;
     m_pendingArchive.clear();
 
@@ -144,7 +158,28 @@ void InstallController::answerLauncher(const QString &relativePath)
         startNext();
         return;
     }
-    startWorker(path, choice, relativePath);
+    startWorker(path, choice, relativePath, allowUnsafe);
+}
+
+void InstallController::answerSecurity(bool installAnyway)
+{
+    if (!m_waitingForAnswer) {
+        return;
+    }
+    const QString path = m_pendingArchive;
+    const ExistingChoice choice = m_currentChoice;
+    m_waitingForAnswer = false;
+    m_pendingArchive.clear();
+
+    if (!installAnyway) {
+        Q_EMIT logLine(i18n("Installation rejected: %1 did not pass a security check.", path));
+        Q_EMIT stateChanged();
+        startNext();
+        return;
+    }
+    Q_EMIT logLine(i18n("Continuing at your request; the refused content stays out of the "
+                        "installation."));
+    startWorker(path, choice, QString(), true);
 }
 
 } // namespace tardrop::gui

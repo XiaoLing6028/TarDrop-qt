@@ -44,6 +44,24 @@ private:
     QString m_selected;
 };
 
+/// Warns that a package failed a security check, and asks whether to install it regardless.
+///
+/// Confirming does not relax any check: the listed members are left out of the installation.
+class SecurityWarningDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    SecurityWarningDialog(const QString &archiveName,
+                          const QList<SecurityConcern> &concerns,
+                          QWidget *parent = nullptr);
+
+    /// True only when the user explicitly chose to install the package anyway.
+    [[nodiscard]] bool accepted() const { return m_accepted; }
+
+private:
+    bool m_accepted = false;
+};
+
 /// Configures where TarDrop may look for a newer version of one installed application.
 class UpdateSourceDialog : public QDialog
 {

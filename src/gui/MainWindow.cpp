@@ -24,6 +24,7 @@
 #include <QCloseEvent>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QFileInfo>
 #include <QLabel>
 #include <QMimeData>
 #include <QTimer>
@@ -200,6 +201,17 @@ void MainWindow::connectControllers()
                 LauncherChoiceDialog dialog(candidates, this);
                 dialog.exec();
                 m_installs->answerLauncher(dialog.selected());
+            });
+
+    connect(m_installs, &InstallController::securityPrompt, this,
+            [this](const QString &archivePath, const QList<SecurityConcern> &concerns) {
+                SecurityWarningDialog dialog(QFileInfo(archivePath).fileName(), concerns, this);
+                dialog.exec();
+                if (!dialog.accepted()) {
+                    showError(i18n("%1 was not installed: it did not pass a security check.",
+                                   QFileInfo(archivePath).fileName()));
+                }
+                m_installs->answerSecurity(dialog.accepted());
             });
 
     connect(m_updates, &UpdateController::logLine, m_installPage, &InstallPage::appendLog);

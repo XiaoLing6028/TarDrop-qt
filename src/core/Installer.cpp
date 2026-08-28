@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <utility>
 
 namespace tardrop::installer {
 namespace {
@@ -357,7 +358,8 @@ Result<QList<LauncherCandidate>> executableCandidates(const QString &root,
 Result<InstallResult> install(const QString &source,
                               ExistingChoice choice,
                               const QString &selectedLauncher,
-                              const Logger &log)
+                              const Logger &log,
+                              bool allowUnsafeContent)
 {
     const auto report = [&log](const QString &line) {
         if (log) {
@@ -388,8 +390,33 @@ Result<InstallResult> install(const QString &source,
         return failure(i18n("could not make private staging directory"));
     }
     report(i18n("Extracting archive into private staging directory…"));
-    if (const Status extracted = archives::extract(source, *format, staging.path()); !extracted) {
-        return failure(extracted.error());
+    const archives::MemberPolicy policy = allowUnsafeContent ? archives::MemberPolicy::SkipUnsafe
+                                                             : archives::MemberPolicy::Strict;
+    QList<SecurityConcern> skipped;
+    if (const Status extracted =
+            archives::extract(source, *format, staging.path(), policy, &skipped);
+        !extracted) {
+        if (allowUnsafeContent) {
+            // The user already accepted the refused members; anything still failing is either a
+            // containment breach or an ordinary extraction error, and neither is negotiable.
+            return failure(extracted.error());
+        }
+        // Describe every problem the package has, so the warning asks the user once rather than
+        // once per offending member.
+        const Result<QList<SecurityConcern>> concerns = archives::inspect(source, *format);
+        if (!concerns || concerns->isEmpty()) {
+            return failure(extracted.error());
+        }
+        const bool containmentBreach = std::ranges::any_of(
+            *concerns, [](const SecurityConcern &concern) { return !concern.overridable; });
+        if (containmentBreach) {
+            return failure(extracted.error());
+        }
+        report(i18n("Rejected by a security check: %1", extracted.error()));
+        return InstallResult{NeedsSecurityConfirmation{*concerns}};
+    }
+    for (const SecurityConcern &concern : std::as_const(skipped)) {
+        report(i18n("Omitted %1 (%2), as you confirmed.", concern.path, concern.reason));
     }
 
     const QString extractedRoot = packageRoot(staging.path());

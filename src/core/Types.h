@@ -43,7 +43,22 @@ struct NeedsLauncherChoice {
     QList<LauncherCandidate> candidates;
 };
 
-using InstallResult = std::variant<InstalledApp, NeedsLauncherChoice>;
+/// One archive member a security check refused, described well enough to warn the user about it.
+struct SecurityConcern {
+    QString path;   ///< the member's own path inside the archive
+    QString reason; ///< translated description of what was rejected
+    /// False for anything that would break containment (traversal, absolute paths). Those members
+    /// are never installable, not even with the user's consent.
+    bool overridable = false;
+};
+
+/// A package a security check rejected. The user may confirm installing it regardless, which
+/// omits the listed members rather than relaxing any check.
+struct NeedsSecurityConfirmation {
+    QList<SecurityConcern> concerns;
+};
+
+using InstallResult = std::variant<InstalledApp, NeedsLauncherChoice, NeedsSecurityConfirmation>;
 
 /// Update source selection, persisted in a readable, forward-compatible form.
 enum class ProviderKind { GitHubReleases, StaticUrl, WebsiteScraper, Manual };
@@ -88,4 +103,5 @@ struct ReleaseInfo {
 Q_DECLARE_METATYPE(tardrop::InstalledApp)
 Q_DECLARE_METATYPE(tardrop::InstalledRecord)
 Q_DECLARE_METATYPE(tardrop::LauncherCandidate)
+Q_DECLARE_METATYPE(tardrop::SecurityConcern)
 Q_DECLARE_METATYPE(tardrop::ReleaseInfo)

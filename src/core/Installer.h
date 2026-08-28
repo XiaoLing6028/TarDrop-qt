@@ -13,10 +13,15 @@ namespace tardrop::installer {
 ///
 /// `selectedLauncher` is a path relative to the extracted root, supplied only after the user has
 /// answered a `NeedsLauncherChoice` result.
+///
+/// `allowUnsafeContent` may only be set after the user has answered a `NeedsSecurityConfirmation`
+/// result. It does not disable any check: the members those checks refused are left out of the
+/// installation, and a member that would escape the extraction root still fails the install.
 Result<InstallResult> install(const QString &source,
                               ExistingChoice choice,
                               const QString &selectedLauncher,
-                              const Logger &log);
+                              const Logger &log,
+                              bool allowUnsafeContent = false);
 
 /// Removes only the exact directory, desktop file, and icon recorded by TarDrop.
 Status uninstall(const InstalledApp &app);

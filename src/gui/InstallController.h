@@ -33,6 +33,8 @@ public Q_SLOTS:
     void answerExisting(tardrop::ExistingChoice choice);
     /// Answers `launcherPrompt`; an empty path cancels this archive.
     void answerLauncher(const QString &relativePath);
+    /// Answers `securityPrompt`; declining leaves the archive rejected.
+    void answerSecurity(bool installAnyway);
 
 Q_SIGNALS:
     void logLine(const QString &line);
@@ -42,17 +44,25 @@ Q_SIGNALS:
     void existingInstallPrompt(const QString &archivePath, const QString &name);
     void launcherPrompt(const QString &archivePath,
                         const QList<tardrop::LauncherCandidate> &candidates);
+    /// A security check refused this archive; the user decides whether to install it regardless.
+    void securityPrompt(const QString &archivePath,
+                        const QList<tardrop::SecurityConcern> &concerns);
 
 private:
     using Outcome = Result<InstallResult>;
 
     void startNext();
-    void startWorker(const QString &path, ExistingChoice choice, const QString &selectedLauncher);
+    void startWorker(const QString &path,
+                     ExistingChoice choice,
+                     const QString &selectedLauncher,
+                     bool allowUnsafeContent);
     void finish();
 
     QQueue<QString> m_queue;
     QString m_current;
     ExistingChoice m_currentChoice = ExistingChoice::KeepBoth;
+    /// Retained across a prompt so a confirmed archive is not re-rejected when work resumes.
+    bool m_currentAllowUnsafe = false;
     bool m_running = false;
     bool m_waitingForAnswer = false;
     QString m_pendingArchive;

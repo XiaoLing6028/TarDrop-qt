@@ -302,6 +302,13 @@ Result<InstalledRecord> update(const InstalledRecord &record, const Logger &log)
     if (std::holds_alternative<NeedsLauncherChoice>(*result)) {
         return abandon(i18n("update needs a launcher choice; installation was rolled back"));
     }
+    if (std::holds_alternative<NeedsSecurityConfirmation>(*result)) {
+        // An update runs unattended against a downloaded archive, so a package the checks refuse is
+        // never installed here; the user can decide about it by installing the archive themselves.
+        return abandon(
+            i18n("the downloaded archive was rejected by a security check; the update was rolled "
+                 "back"));
+    }
 
     const InstalledApp installed = std::get<InstalledApp>(*result);
     if (installed.directory != record.installPath) {
