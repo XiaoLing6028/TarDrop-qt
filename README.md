@@ -40,6 +40,15 @@ sudo pacman -S --needed cmake ninja gcc qt6-base kcoreaddons ki18n kwidgetsaddon
     kconfig kconfigwidgets kcolorscheme kiconthemes knotifications kcrash kio kservice libarchive
 ```
 
+On Fedora:
+
+```bash
+sudo dnf install cmake ninja-build gcc-c++ pkgconf-pkg-config qt6-qtbase-devel \
+    kf6-kcoreaddons-devel kf6-ki18n-devel kf6-kwidgetsaddons-devel kf6-kconfig-devel \
+    kf6-kconfigwidgets-devel kf6-kcolorscheme-devel kf6-kiconthemes-devel \
+    kf6-knotifications-devel kf6-kcrash-devel kf6-kio-devel kf6-kservice-devel libarchive-devel
+```
+
 ## Build and run
 
 ```bash
