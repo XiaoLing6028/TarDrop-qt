@@ -44,7 +44,8 @@ private:
     QString m_selected;
 };
 
-/// Warns that a package failed a security check, and asks whether to install it regardless.
+/// Warns that a package failed a security check, shows the core's risk assessment of what was
+/// refused, and asks whether to install it regardless.
 ///
 /// Confirming does not relax any check: the listed members are left out of the installation.
 class SecurityWarningDialog : public QDialog
@@ -53,6 +54,7 @@ class SecurityWarningDialog : public QDialog
 public:
     SecurityWarningDialog(const QString &archiveName,
                           const QList<SecurityConcern> &concerns,
+                          const RiskAssessment &risk,
                           QWidget *parent = nullptr);
 
     /// True only when the user explicitly chose to install the package anyway.

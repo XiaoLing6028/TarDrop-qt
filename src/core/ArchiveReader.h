@@ -29,11 +29,13 @@ Result<Format> detect(const QString &path);
 /// Reads only the member headers and reports everything the checks would reject.
 ///
 /// Nothing is written and no member data is decoded, so this is safe to run on a package that has
-/// already been refused, in order to describe every problem it has at once.
+/// already been refused, in order to describe every problem it has at once. It is also the only
+/// pass that sees the whole package layout, so it alone decides `SecurityConcern::escapesPackage`.
 Result<QList<SecurityConcern>> inspect(const QString &source, Format format);
 
 /// Extracts `source` into the empty, private `destination` directory.
-/// Symlinks, hardlinks, device files, and traversal paths are rejected rather than followed.
+/// Symlinks, hardlinks, device files, and traversal paths are rejected rather than followed, and an
+/// `install.sh` script is refused because TarDrop never runs it.
 ///
 /// Under `MemberPolicy::SkipUnsafe` the rejected members are appended to `skipped` (when given)
 /// instead of failing the archive; a member that would escape `destination` still fails outright.

@@ -412,8 +412,10 @@ Result<InstallResult> install(const QString &source,
         if (containmentBreach) {
             return failure(extracted.error());
         }
+        const RiskAssessment risk = security::assessRisk(*concerns);
         report(i18n("Rejected by a security check: %1", extracted.error()));
-        return InstallResult{NeedsSecurityConfirmation{*concerns}};
+        report(i18n("Risk assessment: %1", risk.summary));
+        return InstallResult{NeedsSecurityConfirmation{*concerns, risk}};
     }
     for (const SecurityConcern &concern : std::as_const(skipped)) {
         report(i18n("Omitted %1 (%2), as you confirmed.", concern.path, concern.reason));

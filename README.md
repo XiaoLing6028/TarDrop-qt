@@ -17,7 +17,19 @@ TarDrop does not use `tar`, `unzip`, a shell, or `sudo`. Archives are extracted 
 staging directory first. Every member path is checked, and absolute paths, `..`, symlinks, hard
 links, device files, and overwrite attempts are rejected. Only regular files and directories are
 accepted, and setuid/setgid bits are stripped from everything written. It never runs archive
-scripts; `install.sh` is not a launch candidate. A launcher is made only for an ELF binary or a
+scripts, and a package that ships an `install.sh` is refused like a link would be, so the script can
+never become a launch candidate.
+
+When a package is refused only for content that can be left out (links, special files,
+`install.sh`), TarDrop shows a risk assessment and asks before doing anything:
+
+* **High** — any `install.sh`, or 4 or more symlinks/hard links
+* **Medium** — 2–3 symlinks/hard links, or any link pointing outside the package directory
+* **Low** — at most one link, pointing inside the package
+
+For example: "High — install.sh script found (1), 2 symlinks escape the package". Installing anyway
+still never extracts the refused members; it installs the rest of the package without them.
+Absolute paths and `..` are never negotiable and fail the install outright. A launcher is made only for an ELF binary or a
 clearly named launcher script, and is never automatically launched.
 
 Existing installations are either replaced, given a separate numbered directory, or cancelled.
@@ -57,6 +69,12 @@ cmake --build build
 ./build/tardrop
 ```
 
+To run the unit tests (needs QtTest; pass `-DBUILD_TESTING=OFF` to skip building them):
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
 To install system-wide:
 
 ```bash
@@ -76,7 +94,7 @@ libarchive, so no widget code can weaken them.
 
 * `Paths` — bounded user-directory and naming helpers.
 * `Security` — archive SHA-256, ELF magic-byte detection, desktop-value validation, link-safe
-  file-type checks.
+  file-type checks, and the risk assessment for refused packages.
 * `ArchiveReader` — format detection by extension and streaming, path-validated extraction.
 * `DesktopFile` — reads/validates existing `.desktop` metadata and writes the per-user launcher.
 * `IconFinder` — chooses a likely PNG, SVG, XPM, or ICO icon without following links.
@@ -91,7 +109,8 @@ libarchive, so no widget code can weaken them.
 * `DropZone` — the drag-and-drop target.
 * `InstallPage`, `RecordsPage`, `SettingsPage` — the four pages.
 * `InstallController`, `UpdateController` — off-thread orchestration via `QtConcurrent`.
-* `Dialogs` — existing-installation, launcher-choice, and update-source dialogs.
+* `Dialogs` — existing-installation, launcher-choice, security-warning (with its risk assessment),
+  and update-source dialogs.
 * `Widgets` — theme-derived colours and shared card/caption helpers.
 
 ## KDE integration
@@ -127,8 +146,9 @@ version files, archive filenames, and provider release metadata.
 
 ## Notes
 
-TarDrop intentionally rejects archives that contain symlinks, hardlinks, or special files. This is
-stricter than ordinary archive tools because the product's job is safely handling untrusted
+TarDrop intentionally rejects archives that contain symlinks, hardlinks, special files, or an
+`install.sh`, and only installs the rest after showing a risk assessment and getting consent. This
+is stricter than ordinary archive tools because the product's job is safely handling untrusted
 downloads. Launcher discovery scores root `AppRun`, safe `Exec=` targets from nearby desktop files,
 conventional launcher scripts, root executables, and name matches. Dependency, documentation, and
 known helper-binary trees are heavily penalized. When the two top candidates are within 10 points,

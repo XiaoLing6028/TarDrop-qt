@@ -5,6 +5,7 @@
 #include "gui/Widgets.h"
 
 #include <KLocalizedString>
+#include <KMessageWidget>
 
 #include <QAbstractItemView>
 #include <QComboBox>
@@ -44,6 +45,20 @@ QString metadataLabel(const QString &key)
         return i18nc("@label:textbox", "Release notes URL (optional):");
     }
     return key;
+}
+
+/// Matches the assessment's colour to how worried the user should be.
+KMessageWidget::MessageType riskMessageType(RiskLevel level)
+{
+    switch (level) {
+    case RiskLevel::Low:
+        return KMessageWidget::Information;
+    case RiskLevel::Medium:
+        return KMessageWidget::Warning;
+    case RiskLevel::High:
+        break;
+    }
+    return KMessageWidget::Error;
 }
 
 } // namespace
@@ -142,6 +157,7 @@ LauncherChoiceDialog::LauncherChoiceDialog(const QList<LauncherCandidate> &candi
 
 SecurityWarningDialog::SecurityWarningDialog(const QString &archiveName,
                                              const QList<SecurityConcern> &concerns,
+                                             const RiskAssessment &risk,
                                              QWidget *parent)
     : QDialog(parent)
 {
@@ -159,6 +175,15 @@ SecurityWarningDialog::SecurityWarningDialog(const QString &archiveName,
     headline->setWordWrap(true);
     layout->addWidget(headline);
 
+    // The assessment comes first: it is the one line the user most needs before reading the list.
+    auto *assessment = new KMessageWidget(i18nc("@info", "<b>Risk:</b> %1",
+                                                risk.summary.toHtmlEscaped()));
+    assessment->setTextFormat(Qt::RichText);
+    assessment->setWordWrap(true);
+    assessment->setCloseButtonVisible(false);
+    assessment->setMessageType(riskMessageType(risk.level));
+    layout->addWidget(assessment);
+
     layout->addWidget(caption(i18np("One archive member failed a security check:",
                                     "%1 archive members failed a security check:",
                                     concerns.size())));
@@ -167,9 +192,16 @@ SecurityWarningDialog::SecurityWarningDialog(const QString &archiveName,
     // what they are agreeing to.
     auto *list = new QListWidget;
     for (const SecurityConcern &concern : concerns) {
-        auto *item = new QListWidgetItem(
-            i18nc("@item:inlistbox archive member and why it was refused", "%1 — %2",
-                  concern.path, concern.reason));
+        QString text = i18nc("@item:inlistbox archive member and why it was refused", "%1 — %2",
+                             concern.path, concern.reason);
+        if (!concern.linkTarget.isEmpty()) {
+            text = concern.escapesPackage
+                ? i18nc("@item:inlistbox refused link and its target",
+                        "%1 → %2 (outside the package)", text, concern.linkTarget)
+                : i18nc("@item:inlistbox refused link and its target", "%1 → %2", text,
+                        concern.linkTarget);
+        }
+        auto *item = new QListWidgetItem(text);
         item->setIcon(QIcon::fromTheme(QStringLiteral("dialog-warning")));
         list->addItem(item);
     }
@@ -198,9 +230,11 @@ SecurityWarningDialog::SecurityWarningDialog(const QString &archiveName,
     auto *cancel = buttons->addButton(i18nc("@action:button", "Keep Rejected"),
                                       QDialogButtonBox::RejectRole);
     cancel->setToolTip(i18nc("@info:tooltip", "Do not install this archive."));
-    // Cancelling is the safe answer, so it is what Return and Escape both do.
+    // Cancelling is the safe answer, so it is what Return and Escape both do. A focused button in a
+    // dialog takes Return for itself, so "Install Anyway" must never act as a default even when
+    // focused, and must not start out focused.
     cancel->setDefault(true);
-    cancel->setFocus();
+    proceed->setAutoDefault(false);
 
     connect(proceed, &QPushButton::clicked, this, [this] {
         m_accepted = true;
@@ -208,6 +242,8 @@ SecurityWarningDialog::SecurityWarningDialog(const QString &archiveName,
     });
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
     layout->addWidget(buttons);
+    // Only now is the button part of this dialog; focus set while the box was parentless is lost.
+    cancel->setFocus();
 }
 
 UpdateSourceDialog::UpdateSourceDialog(const InstalledRecord &record, QWidget *parent)

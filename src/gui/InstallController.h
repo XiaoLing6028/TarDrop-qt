@@ -44,9 +44,11 @@ Q_SIGNALS:
     void existingInstallPrompt(const QString &archivePath, const QString &name);
     void launcherPrompt(const QString &archivePath,
                         const QList<tardrop::LauncherCandidate> &candidates);
-    /// A security check refused this archive; the user decides whether to install it regardless.
+    /// A security check refused this archive; the user decides whether to install it regardless,
+    /// having been shown how risky the refused content is.
     void securityPrompt(const QString &archivePath,
-                        const QList<tardrop::SecurityConcern> &concerns);
+                        const QList<tardrop::SecurityConcern> &concerns,
+                        const tardrop::RiskAssessment &risk);
 
 private:
     using Outcome = Result<InstallResult>;

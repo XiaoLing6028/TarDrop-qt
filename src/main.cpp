@@ -24,6 +24,7 @@ int main(int argc, char *argv[])
     qRegisterMetaType<tardrop::InstalledApp>();
     qRegisterMetaType<tardrop::InstalledRecord>();
     qRegisterMetaType<tardrop::ReleaseInfo>();
+    qRegisterMetaType<tardrop::RiskAssessment>();
     qRegisterMetaType<QList<tardrop::LauncherCandidate>>("QList<tardrop::LauncherCandidate>");
 
     KAboutData about(QStringLiteral("tardrop"),
