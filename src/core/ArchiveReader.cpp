@@ -184,6 +184,15 @@ Status writeRegularFile(struct archive *handle, const QString &output, mode_t mo
     return {};
 }
 
+/// Decodes a link member's target the way the entry declares it.
+QString linkTarget(const char *utf8, const char *raw)
+{
+    if (utf8) {
+        return QString::fromUtf8(utf8);
+    }
+    return raw ? QFile::decodeName(raw) : QString();
+}
+
 /// Applies the member checks and reports what, if anything, they refuse.
 ///
 /// Both the header scan and the extraction pass go through this function, so a package can never
@@ -199,21 +208,73 @@ std::optional<SecurityConcern> memberConcern(struct archive_entry *entry,
                                relative.isEmpty()
                                    ? i18nc("@item archive member", "an empty path")
                                    : i18nc("@item archive member", "an unsafe path"),
-                               false};
+                               false, ConcernKind::UnsafePath, QString(), false};
     }
     // A hard link points at an already-extracted file and would let one member alias another.
     if (archive_entry_hardlink(entry) != nullptr || archive_entry_hardlink_utf8(entry) != nullptr) {
-        return SecurityConcern{relative, i18nc("@item archive member", "a hard link"), true};
+        return SecurityConcern{relative, i18nc("@item archive member", "a hard link"), true,
+                               ConcernKind::HardLink,
+                               linkTarget(archive_entry_hardlink_utf8(entry),
+                                          archive_entry_hardlink(entry)),
+                               false};
     }
     const mode_t filetype = archive_entry_filetype(entry);
     if (filetype == AE_IFLNK) {
-        return SecurityConcern{relative, i18nc("@item archive member", "a symbolic link"), true};
+        return SecurityConcern{relative, i18nc("@item archive member", "a symbolic link"), true,
+                               ConcernKind::SymbolicLink,
+                               linkTarget(archive_entry_symlink_utf8(entry),
+                                          archive_entry_symlink(entry)),
+                               false};
     }
     if (filetype != AE_IFREG && filetype != AE_IFDIR) {
         return SecurityConcern{relative,
-                               i18nc("@item archive member", "an unsupported special file"), true};
+                               i18nc("@item archive member", "an unsupported special file"), true,
+                               ConcernKind::SpecialFile, QString(), false};
+    }
+    // TarDrop never runs an installer script, so a package that ships one expects a step that will
+    // not happen. Leaving it out also keeps its `.sh` name from ranking it as the launcher.
+    if (filetype == AE_IFREG
+        && relative.section(u'/', -1, -1, QString::SectionSkipEmpty)
+               .compare(QStringLiteral("install.sh"), Qt::CaseInsensitive)
+            == 0) {
+        return SecurityConcern{relative, i18nc("@item archive member", "an install script"), true,
+                               ConcernKind::InstallScript, QString(), false};
     }
     return std::nullopt;
+}
+
+/// Whether a refused link's target resolves outside `packageDir` (the archive root when empty).
+///
+/// The resolution is lexical, like every other path check here. That is enough for a warning:
+/// links are never extracted, and a link that reaches outside through another link is reported
+/// because that other link escapes too.
+bool linkEscapes(const SecurityConcern &concern, const QString &packageDir)
+{
+    if (concern.linkTarget.isEmpty() || concern.linkTarget.startsWith(u'/')) {
+        return true;
+    }
+    // A symlink resolves against its own directory; a hard link names another archive member.
+    QStringList resolved;
+    if (concern.kind == ConcernKind::SymbolicLink) {
+        resolved = concern.path.split(u'/', Qt::SkipEmptyParts);
+        if (!resolved.isEmpty()) {
+            resolved.removeLast();
+        }
+    }
+    for (const QString &piece : concern.linkTarget.split(u'/', Qt::SkipEmptyParts)) {
+        if (piece == QStringLiteral(".")) {
+            continue;
+        }
+        if (piece == QStringLiteral("..")) {
+            if (resolved.isEmpty()) {
+                return true;
+            }
+            resolved.removeLast();
+            continue;
+        }
+        resolved.append(piece);
+    }
+    return !packageDir.isEmpty() && (resolved.isEmpty() || resolved.constFirst() != packageDir);
 }
 
 /// The failure text used when a refused member stops the whole archive.
@@ -282,6 +343,11 @@ Result<QList<SecurityConcern>> inspect(const QString &source, Format format)
     }
 
     QList<SecurityConcern> concerns;
+    // The installer collapses a lone enclosing directory into the package root, so "the package"
+    // means that directory when every member shares one, and the archive root otherwise.
+    QString topLevel;
+    bool sharedTopLevel = true;
+    bool topLevelIsDirectory = false;
     while (true) {
         struct archive_entry *entry = nullptr;
         const int status = archive_read_next_header(reader->get(), &entry);
@@ -292,9 +358,26 @@ Result<QList<SecurityConcern>> inspect(const QString &source, Format format)
             return failure(readerError(reader->get(), i18n("could not read archive member")));
         }
         const QString relative = memberPath(entry);
+        const QStringList pieces = relative.split(u'/', Qt::SkipEmptyParts);
+        if (!pieces.isEmpty()) {
+            if (topLevel.isEmpty()) {
+                topLevel = pieces.constFirst();
+            } else if (topLevel != pieces.constFirst()) {
+                sharedTopLevel = false;
+            }
+            topLevelIsDirectory = topLevelIsDirectory || pieces.size() > 1
+                || archive_entry_filetype(entry) == AE_IFDIR;
+        }
         if (const std::optional<SecurityConcern> concern =
                 memberConcern(entry, relative, safeDestination(root, relative))) {
             concerns.append(*concern);
+        }
+    }
+
+    const QString packageDir = (sharedTopLevel && topLevelIsDirectory) ? topLevel : QString();
+    for (SecurityConcern &concern : concerns) {
+        if (concern.kind == ConcernKind::SymbolicLink || concern.kind == ConcernKind::HardLink) {
+            concern.escapesPackage = linkEscapes(concern, packageDir);
         }
     }
     return concerns;

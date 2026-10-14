@@ -8,13 +8,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release   # configure (Debug also fine)
 cmake --build build                                  # build
 ./build/tardrop [archive...]                         # run; archives may be passed as arguments
+ctest --test-dir build --output-on-failure           # run the unit tests
+ctest --test-dir build -R tst_riskassessment         # run a single test executable
 sudo cmake --install build --prefix /usr             # system-wide install
 ```
 
-Requires CMake 3.28+, Ninja, a C++23 compiler (GCC 14+/Clang 18+), Qt 6.6+, KDE Frameworks 6, and
-libarchive 3.6+. The build hard-fails on non-Linux. There is no test suite, linter config, or CI in
-the repo — verify changes by building and exercising the app. `compile_commands.json` is exported
-into `build/` for clangd.
+Requires CMake 3.28+, Ninja, a C++23 compiler (GCC 14+/Clang 18+), Qt 6.6+ (plus QtTest for the
+tests), KDE Frameworks 6, and libarchive 3.6+. The build hard-fails on non-Linux. There is no linter
+config or CI in the repo. `compile_commands.json` is exported into `build/` for clangd.
+
+Tests live in `tests/` (QtTest, one executable per `tst_*.cpp`, `-DBUILD_TESTING=OFF` skips them).
+They cover `tardrop-core` plus `InstallController`, which has no widget dependency; fixtures are
+written in code with libarchive via `tests/ArchiveBuilder.h`. `tst_installflow` points `HOME` and
+the XDG directories at a temporary directory, so it never touches the real `~/Applications`.
 
 ## Architecture
 
@@ -27,10 +33,11 @@ Two CMake targets enforce a security boundary that must not be crossed:
   presentation only.
 
 Core modules: `Paths` (bounded naming/directory helpers), `Security` (SHA-256, ELF magic, desktop
-value validation, link-safe file-type checks), `ArchiveReader` (format detection + path-validated
-streaming extraction), `DesktopFile`, `IconFinder`, `Installer` (extract → inspect → publish
-transaction, plus uninstall rules), `Records` (JSON database + settings), `Providers`
-(`UpdateProvider` interface and built-ins), `Updater` (version detection, rollback-safe update).
+value validation, link-safe file-type checks, refused-package risk assessment), `ArchiveReader`
+(format detection + path-validated streaming extraction), `DesktopFile`, `IconFinder`, `Installer`
+(extract → inspect → publish transaction, plus uninstall rules), `Records` (JSON database +
+settings), `Providers` (`UpdateProvider` interface and built-ins), `Updater` (version detection,
+rollback-safe update).
 
 GUI: `MainWindow` hosts a `KPageWidget` with four pages (`InstallPage`, two `RecordsPage`
 instances for Installed/Updates, `SettingsPage`). `InstallController` and `UpdateController` run
@@ -52,6 +59,11 @@ user, not failures: the controller emits a prompt signal, and the install is re-
 answer (`selectedLauncher` / `allowUnsafeContent`). `allowUnsafeContent` never relaxes a check — it
 omits the refused members, and non-overridable concerns (traversal, absolute paths) still fail.
 
+`NeedsSecurityConfirmation` carries a `RiskAssessment` from `security::assessRisk()`, shown before the
+user approves or denies: **High** for any `install.sh` or ≥4 symlinks/hard links, **Medium** for 2–3
+links or any link whose target leaves the package directory, **Low** otherwise. Whether a link
+escapes is decided by `archives::inspect()`, the only pass that sees the whole package layout.
+
 ## Invariants to preserve
 
 These are product requirements, not incidental behaviour. Do not "simplify" them away:
@@ -59,7 +71,8 @@ These are product requirements, not incidental behaviour. Do not "simplify" them
 * No `tar`, `unzip`, shell, or `sudo` subprocesses; archive work goes through libarchive.
 * Extraction happens in a private staging directory first; publish only after inspection.
 * Symlinks, hard links, device files, absolute paths, `..`, and overwrites are rejected; setuid/
-  setgid bits are stripped. Only regular files and directories are accepted.
+  setgid bits are stripped. Only regular files and directories are accepted. `install.sh` (any
+  depth, any case) is refused too, and omitted when the user approves.
 * Archive scripts are never executed — not at install, and not for version detection (no
   `--version` invocation). Version comes from desktop metadata, version files, archive names, or
   provider release metadata.

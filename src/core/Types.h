@@ -43,6 +43,9 @@ struct NeedsLauncherChoice {
     QList<LauncherCandidate> candidates;
 };
 
+/// What a security check refused a member for. The risk assessment weighs each kind differently.
+enum class ConcernKind { UnsafePath, HardLink, SymbolicLink, SpecialFile, InstallScript };
+
 /// One archive member a security check refused, described well enough to warn the user about it.
 struct SecurityConcern {
     QString path;   ///< the member's own path inside the archive
@@ -50,12 +53,35 @@ struct SecurityConcern {
     /// False for anything that would break containment (traversal, absolute paths). Those members
     /// are never installable, not even with the user's consent.
     bool overridable = false;
+    ConcernKind kind = ConcernKind::UnsafePath;
+    QString linkTarget; ///< for links, the target exactly as the archive stores it
+    /// For links, whether the target resolves outside the package directory. Only the header scan
+    /// (`archives::inspect`) knows the whole package layout, so only it fills this in.
+    bool escapesPackage = false;
+};
+
+/// How much a refused package should worry the user, judged from what the checks refused.
+enum class RiskLevel { Low, Medium, High };
+
+/// A summary of everything a security check refused, shown before the user decides.
+///
+/// It is computed in the core from the concerns themselves, so the GUI only presents it and cannot
+/// make a package look safer than the checks found it to be.
+struct RiskAssessment {
+    RiskLevel level = RiskLevel::Low;
+    int symlinks = 0;
+    int hardLinks = 0;
+    int escapingLinks = 0; ///< symlinks and hard links whose target leaves the package
+    int installScripts = 0;
+    int specialFiles = 0;
+    QString summary; ///< translated, e.g. "High — install.sh script found (1), …"
 };
 
 /// A package a security check rejected. The user may confirm installing it regardless, which
 /// omits the listed members rather than relaxing any check.
 struct NeedsSecurityConfirmation {
     QList<SecurityConcern> concerns;
+    RiskAssessment risk;
 };
 
 using InstallResult = std::variant<InstalledApp, NeedsLauncherChoice, NeedsSecurityConfirmation>;
@@ -104,4 +130,5 @@ Q_DECLARE_METATYPE(tardrop::InstalledApp)
 Q_DECLARE_METATYPE(tardrop::InstalledRecord)
 Q_DECLARE_METATYPE(tardrop::LauncherCandidate)
 Q_DECLARE_METATYPE(tardrop::SecurityConcern)
+Q_DECLARE_METATYPE(tardrop::RiskAssessment)
 Q_DECLARE_METATYPE(tardrop::ReleaseInfo)

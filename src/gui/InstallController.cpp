@@ -114,7 +114,7 @@ void InstallController::finish()
     } else {
         const auto &refused = std::get<NeedsSecurityConfirmation>(*outcome);
         await();
-        Q_EMIT securityPrompt(path, refused.concerns);
+        Q_EMIT securityPrompt(path, refused.concerns, refused.risk);
         return;
     }
 

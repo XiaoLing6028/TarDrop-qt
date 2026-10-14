@@ -100,6 +100,13 @@ foreach(target tardrop-core tardrop)
 endforeach()
 target_link_options(tardrop PRIVATE -Wl,-z,relro -Wl,-z,now)
 
+# Unit tests need only QtTest on top of the core's dependencies; disable with -DBUILD_TESTING=OFF.
+option(BUILD_TESTING "Build the unit tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
 install(TARGETS tardrop RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES data/org.tardrop.TarDrop.desktop
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)

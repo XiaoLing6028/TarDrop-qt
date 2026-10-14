@@ -204,8 +204,10 @@ void MainWindow::connectControllers()
             });
 
     connect(m_installs, &InstallController::securityPrompt, this,
-            [this](const QString &archivePath, const QList<SecurityConcern> &concerns) {
-                SecurityWarningDialog dialog(QFileInfo(archivePath).fileName(), concerns, this);
+            [this](const QString &archivePath, const QList<SecurityConcern> &concerns,
+                   const RiskAssessment &risk) {
+                SecurityWarningDialog dialog(QFileInfo(archivePath).fileName(), concerns, risk,
+                                             this);
                 dialog.exec();
                 if (!dialog.accepted()) {
                     showError(i18n("%1 was not installed: it did not pass a security check.",
