@@ -108,7 +108,22 @@ private Q_SLOTS:
         QPushButton *keep = buttonNamed(dialog, i18nc("@action:button", "Keep Rejected"));
         QVERIFY(keep);
         QVERIFY(keep->isDefault()); // Return denies, whatever the level
+        dialog.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+        QCOMPARE(dialog.focusWidget(), keep);
         QTimer::singleShot(0, keep, &QPushButton::click);
+        QCOMPARE(dialog.exec(), int(QDialog::Rejected));
+        QVERIFY(!dialog.accepted());
+    }
+
+    /// Return must deny too: the warning should never be approved by a reflexive keypress.
+    void returnDenies()
+    {
+        gui::SecurityWarningDialog dialog(QStringLiteral("demo.tar.gz"), kConcerns,
+                                          risk(RiskLevel::High, QStringLiteral("High — x")));
+        QTimer::singleShot(0, &dialog, [&dialog] {
+            QTest::keyClick(dialog.focusWidget() ? dialog.focusWidget() : &dialog, Qt::Key_Return);
+        });
         QCOMPARE(dialog.exec(), int(QDialog::Rejected));
         QVERIFY(!dialog.accepted());
     }

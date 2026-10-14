@@ -230,9 +230,11 @@ SecurityWarningDialog::SecurityWarningDialog(const QString &archiveName,
     auto *cancel = buttons->addButton(i18nc("@action:button", "Keep Rejected"),
                                       QDialogButtonBox::RejectRole);
     cancel->setToolTip(i18nc("@info:tooltip", "Do not install this archive."));
-    // Cancelling is the safe answer, so it is what Return and Escape both do.
+    // Cancelling is the safe answer, so it is what Return and Escape both do. A focused button in a
+    // dialog takes Return for itself, so "Install Anyway" must never act as a default even when
+    // focused, and must not start out focused.
     cancel->setDefault(true);
-    cancel->setFocus();
+    proceed->setAutoDefault(false);
 
     connect(proceed, &QPushButton::clicked, this, [this] {
         m_accepted = true;
@@ -240,6 +242,8 @@ SecurityWarningDialog::SecurityWarningDialog(const QString &archiveName,
     });
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
     layout->addWidget(buttons);
+    // Only now is the button part of this dialog; focus set while the box was parentless is lost.
+    cancel->setFocus();
 }
 
 UpdateSourceDialog::UpdateSourceDialog(const InstalledRecord &record, QWidget *parent)
