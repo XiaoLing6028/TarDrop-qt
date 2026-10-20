@@ -57,6 +57,8 @@ private Q_SLOTS:
         KLocalizedString::setApplicationDomain(QByteArrayLiteral("tardrop"));
         qputenv("HOME", QFile::encodeName(m_home.path()));
         qputenv("XDG_DATA_HOME", QFile::encodeName(m_home.filePath(QStringLiteral("data"))));
+        // Inside Flatpak the core writes to the host's data home instead, so pin that one too.
+        qputenv("HOST_XDG_DATA_HOME", QFile::encodeName(m_home.filePath(QStringLiteral("data"))));
         qputenv("XDG_CONFIG_HOME", QFile::encodeName(m_home.filePath(QStringLiteral("config"))));
         qputenv("XDG_CACHE_HOME", QFile::encodeName(m_home.filePath(QStringLiteral("cache"))));
         QCOMPARE(QDir::homePath(), m_home.path());

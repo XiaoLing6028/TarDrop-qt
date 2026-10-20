@@ -84,6 +84,120 @@ sudo cmake --install build --prefix /usr
 `tardrop` also accepts archives as command-line arguments, and registers the supported archive MIME
 types, so "Open With → TarDrop" works from Dolphin.
 
+## Flatpak
+
+TarDrop is also available as a single-file Flatpak bundle, `TarDrop.flatpak`, attached to
+[GitHub Releases](https://github.com/XiaoLing6028/TarDrop-qt/releases). It is not published on
+Flathub. It installs per user, without `sudo`, and works on KDE Plasma and GNOME: TarDrop itself
+and every application it installs show up in Kickoff, KRunner, and the GNOME application overview.
+
+### Setup
+
+You need Flatpak itself. Many distributions, Fedora among them, ship it preinstalled; otherwise
+install it with `sudo dnf install flatpak`, `sudo pacman -S flatpak`, or `sudo apt install flatpak`.
+That is the only step that needs administrator rights. If you have never used Flatpak before, log out and back in
+once after installing it, so your session picks up the directories Flatpak exports launchers to.
+
+The bundle runs on the KDE Platform 6.11 runtime (`org.kde.Platform//6.11`). KDE distributes its
+stable runtimes through Flathub's repository, so the runtime is downloaded from there; TarDrop itself
+is not. The bundle names that repository, and `flatpak install` offers to add it when the runtime is
+missing. To set it up yourself first:
+
+```bash
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user flathub org.kde.Platform//6.11
+```
+
+### Install, launch, update, uninstall
+
+```bash
+flatpak install --user ./TarDrop.flatpak      # install for the current user
+flatpak run org.tardrop.TarDrop               # or start "TarDrop" from your application launcher
+flatpak install --user ./TarDrop.flatpak      # update: install a newer bundle over the old one
+flatpak update --user                         # updates the KDE runtime (bundles carry no update URL)
+flatpak uninstall --user org.tardrop.TarDrop  # remove TarDrop
+```
+
+Check the bundle against the `TarDrop.flatpak.sha256` file from the same release before installing
+it: `sha256sum -c TarDrop.flatpak.sha256`.
+
+Uninstalling the Flatpak removes TarDrop only. The applications it installed, their launchers, and
+its records in `~/.local/share/tardrop` are ordinary files in your home and stay, exactly as with a
+native install; uninstall them from TarDrop first if you want them gone. `--delete-data` additionally
+removes `~/.var/app/org.tardrop.TarDrop`, which only holds TarDrop's window state and caches.
+
+### Permissions
+
+TarDrop's whole job is to put applications and launchers onto the host, so it needs write access
+outside its sandbox. It gets exactly the directories it writes, and nothing else in your home:
+
+| Permission | Why |
+| --- | --- |
+| `--filesystem=~/Applications:create` | The install root; TarDrop only creates immediate children of it. |
+| `--filesystem=xdg-data/applications:create` | Per-user launchers that Plasma and GNOME read. |
+| `--filesystem=xdg-data/icons/TarDrop:create` | The launcher icons TarDrop copies out of each package. |
+| `--filesystem=xdg-data/tardrop:create` | The installed-app database and settings, shared with a native install. |
+| `--share=network` | The GitHub Releases, Static URL, and Website update providers. |
+| `--socket=wayland`, `--socket=fallback-x11`, `--share=ipc` | Showing the window. |
+
+Inside a Flatpak, `XDG_DATA_HOME` points at the app's private `~/.var/app` directory, which no
+desktop launcher scans. TarDrop therefore writes launchers, icons, and records to the host's data
+home (`$XDG_DATA_HOME`, else `~/.local/share`) — the same files a native build writes.
+
+Archives are opened through desktop portals instead of broad file access: **Browse…** uses the file
+chooser portal, "Open With → TarDrop" in Dolphin or Files forwards the file through the document
+portal, and drag and drop uses the file-transfer portal, which Dolphin and GTK 4 file managers such
+as GNOME Files offer.
+
+Be aware of what the sandbox does and does not protect. The applications TarDrop installs are not
+sandboxed — they run on the host, with the host's libraries, like any other program in your home.
+TarDrop can create and replace launchers in `~/.local/share/applications`, and a launcher can run
+anything once clicked, so the Flatpak sandbox is not a security boundary around what TarDrop
+installs; TarDrop's own archive checks still are. TarDrop is deliberately *not* given
+`org.freedesktop.Flatpak` (`flatpak-spawn --host`) or `org.freedesktop.systemd1`, so it cannot start
+programs on the host by itself.
+
+### Differences from the native build
+
+* **Launch is unavailable.** From inside the sandbox, an application would start inside TarDrop's
+  sandbox, against the KDE runtime's libraries instead of yours, and fail or misbehave. The button
+  is disabled; start installed applications from your application launcher instead.
+* **Plasma's application menu updates itself.** The native build runs `kbuildsycoca6` after each
+  install; inside the sandbox that would only refresh TarDrop's private cache, so Plasma's `kded6`
+  notices the new launcher on its own. GNOME watches the launcher directory directly.
+* **Archive access goes through portals** (see above), so archives keep a
+  `/run/user/<uid>/doc/…` path inside TarDrop. Only the archive file name is recorded.
+
+### Building the bundle
+
+```bash
+./scripts/build-flatpak.sh            # writes dist/TarDrop.flatpak and dist/TarDrop.flatpak.sha256
+```
+
+This needs `flatpak` and `flatpak-builder`, and downloads `org.kde.Sdk//6.11` (about 1.2 GB) on the
+first run. The manifest is `flatpak/org.tardrop.TarDrop.yml`; the unit tests run inside the build
+sandbox, which also covers the Flatpak path handling. The **Flatpak bundle** GitHub Actions workflow
+runs the same script for `v*` tags or on demand and keeps the bundle as a workflow artifact; it never
+creates or publishes a release.
+
+### Troubleshooting
+
+* **TarDrop is missing from the launcher after installing the bundle:** log out and back in once, so
+  `~/.local/share/flatpak/exports/share` is on `XDG_DATA_DIRS`, and check that
+  `flatpak list --user` shows `org.tardrop.TarDrop`.
+* **An installed application does not appear in Plasma:** run `kbuildsycoca6` on the host, or log
+  out and back in, to rebuild Plasma's application cache.
+* **"Launch" is greyed out:** expected in the Flatpak build; see above.
+* **Dropping an archive does nothing, or it "could not be opened":** the file manager did not export
+  the drag through the file-transfer portal. Use **Browse…**, or allow TarDrop to read your
+  downloads: `flatpak override --user --filesystem=xdg-download:ro org.tardrop.TarDrop`.
+* **The runtime is missing:** `flatpak install --user flathub org.kde.Platform//6.11`.
+* **Inspect or reset permissions:** `flatpak info --show-permissions org.tardrop.TarDrop` and
+  `flatpak override --user --reset org.tardrop.TarDrop`.
+* **An installed application fails to start:** it runs on the host, so missing libraries are missing
+  on your system, exactly as with the native build. Run its launcher's `Exec` path in a terminal to
+  see the error.
+
 ## Architecture
 
 The project is split into a GUI-free core library and a thin presentation layer. All

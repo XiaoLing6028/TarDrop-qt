@@ -10,13 +10,18 @@
       TarDrop installs portable application archives into your own user account. Drop a
       tar, tar.gz, tgz, tar.xz, tar.bz2, or zip archive onto its window: TarDrop extracts it
       beneath ~/Applications, finds a native launcher inside it, and writes a per-user desktop
-      entry so the application appears in the Plasma application launcher and KRunner.
+      entry so the application appears in the Plasma application launcher, KRunner, and the GNOME
+      application overview.
     </p>
     <p>
       TarDrop never uses tar, unzip, a shell, or sudo, and never runs anything from an archive.
       Absolute paths, traversal, symlinks, hard links, and device files are rejected outright.
     </p>
   </description>
+  <developer>
+    <name>XiaoLing6028</name>
+  </developer>
+  <url type="homepage">https://github.com/XiaoLing6028/TarDrop-qt</url>
   <launchable type="desktop-id">org.tardrop.TarDrop.desktop</launchable>
   <categories>
     <category>System</category>

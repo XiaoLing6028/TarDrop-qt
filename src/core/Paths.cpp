@@ -1,6 +1,7 @@
 #include "core/Paths.h"
 
 #include <KLocalizedString>
+#include <KSandbox>
 
 #include <QDir>
 #include <QFileInfo>
@@ -22,6 +23,31 @@ Result<QString> ensureDir(const QString &path)
     return path;
 }
 
+/// The XDG data home that the desktop's launchers read. Inside Flatpak, XDG_DATA_HOME is the app's
+/// private `~/.var/app/<id>/data`, which neither Plasma nor GNOME scans, so launchers and icons
+/// written there would never appear. Flatpak passes the host's value as HOST_XDG_DATA_HOME only when
+/// the host set one; otherwise the host uses the specification's `~/.local/share` default.
+Result<QString> dataHome()
+{
+    if (KSandbox::isFlatpak()) {
+        const QString host = qEnvironmentVariable("HOST_XDG_DATA_HOME");
+        // The specification says a relative value is invalid and must be ignored.
+        if (!host.isEmpty() && QDir::isAbsolutePath(host)) {
+            return clean(host);
+        }
+        const QString home = QDir::homePath();
+        if (home.isEmpty()) {
+            return failure(i18n("could not determine home directory"));
+        }
+        return join(home, QStringLiteral(".local/share"));
+    }
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    if (base.isEmpty()) {
+        return failure(i18n("could not determine XDG data directory"));
+    }
+    return base;
+}
+
 } // namespace
 
 Result<QString> applicationsDir()
@@ -35,29 +61,29 @@ Result<QString> applicationsDir()
 
 Result<QString> applicationsDatabaseDir()
 {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    if (base.isEmpty()) {
-        return failure(i18n("could not determine XDG data directory"));
+    const Result<QString> base = dataHome();
+    if (!base) {
+        return failure(base.error());
     }
-    return ensureDir(join(base, QStringLiteral("applications")));
+    return ensureDir(join(*base, QStringLiteral("applications")));
 }
 
 Result<QString> iconsRootDir()
 {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    if (base.isEmpty()) {
-        return failure(i18n("could not determine XDG data directory"));
+    const Result<QString> base = dataHome();
+    if (!base) {
+        return failure(base.error());
     }
-    return ensureDir(join(base, QStringLiteral("icons")));
+    return ensureDir(join(*base, QStringLiteral("icons")));
 }
 
 Result<QString> dataDir()
 {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    if (base.isEmpty()) {
-        return failure(i18n("could not determine XDG data directory"));
+    const Result<QString> base = dataHome();
+    if (!base) {
+        return failure(base.error());
     }
-    return ensureDir(join(base, QStringLiteral("tardrop")));
+    return ensureDir(join(*base, QStringLiteral("tardrop")));
 }
 
 QString archiveStem(const QString &path)

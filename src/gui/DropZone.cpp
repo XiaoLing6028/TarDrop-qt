@@ -8,32 +8,12 @@
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QLabel>
-#include <QMimeData>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
 #include <QVBoxLayout>
 
 namespace tardrop::gui {
-namespace {
-
-/// Returns the local file paths of a drag, or an empty list when it carries nothing usable.
-QStringList localFiles(const QMimeData *mime)
-{
-    QStringList paths;
-    if (!mime || !mime->hasUrls()) {
-        return paths;
-    }
-    const QList<QUrl> urls = mime->urls();
-    for (const QUrl &url : urls) {
-        if (url.isLocalFile()) {
-            paths.append(url.toLocalFile());
-        }
-    }
-    return paths;
-}
-
-} // namespace
 
 DropZone::DropZone(QWidget *parent)
     : QWidget(parent)
@@ -132,7 +112,7 @@ void DropZone::mouseReleaseEvent(QMouseEvent *event)
 
 void DropZone::dragEnterEvent(QDragEnterEvent *event)
 {
-    if (localFiles(event->mimeData()).isEmpty()) {
+    if (droppedLocalFiles(event->mimeData()).isEmpty()) {
         return;
     }
     event->acceptProposedAction();
@@ -147,7 +127,7 @@ void DropZone::dragLeaveEvent(QDragLeaveEvent *event)
 
 void DropZone::dropEvent(QDropEvent *event)
 {
-    const QStringList paths = localFiles(event->mimeData());
+    const QStringList paths = droppedLocalFiles(event->mimeData());
     setHovering(false);
     if (paths.isEmpty()) {
         return;
