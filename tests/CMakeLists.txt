@@ -18,6 +18,7 @@ endfunction()
 
 tardrop_add_test(tst_riskassessment)
 tardrop_add_test(tst_archiveinspect)
+tardrop_add_test(tst_datapaths LIBRARIES KF6::CoreAddons)
 # The controller has no widget dependency, so its queue logic is tested against the real core.
 tardrop_add_test(tst_installflow
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../src/gui/InstallController.cpp

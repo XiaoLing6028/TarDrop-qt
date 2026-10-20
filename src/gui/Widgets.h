@@ -9,8 +9,11 @@
 #include <QFrame>
 #include <QIcon>
 #include <QString>
+#include <QStringList>
 
 class QLabel;
+class QMimeData;
+class QPushButton;
 class QVBoxLayout;
 class QWidget;
 
@@ -53,5 +56,14 @@ void openInFileManager(const QString &path, QWidget *window);
 /// Starts an installed application through its own desktop entry, so Plasma applies the same
 /// launch feedback, scope, and service registration it would from the application menu.
 void launchDesktopFile(const QString &desktopFile, QWidget *window);
+
+/// Disables a "Launch" button inside a sandbox such as Flatpak. KIO can only start the program
+/// inside TarDrop's own sandbox there, against the runtime's libraries instead of the host's, which
+/// is not how it runs from the application launcher; the tooltip points the user there instead.
+void restrictLaunchButton(QPushButton *button);
+
+/// The local paths a drag carries. Inside a sandbox the dragged paths are usually unreadable, so
+/// the copies a file manager exported through the file-transfer portal are used when offered.
+QStringList droppedLocalFiles(const QMimeData *mime);
 
 } // namespace tardrop::gui

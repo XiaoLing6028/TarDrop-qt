@@ -5,11 +5,15 @@
 #include <KIO/JobUiDelegateFactory>
 #include <KIO/OpenUrlJob>
 #include <KLocalizedString>
+#include <KSandbox>
 #include <KService>
+#include <KUrlMimeData>
 
 #include <QFileInfo>
 #include <QFont>
 #include <QLabel>
+#include <QMimeData>
+#include <QPushButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -110,6 +114,35 @@ void launchDesktopFile(const QString &desktopFile, QWidget *window)
     auto *job = new KIO::ApplicationLauncherJob(service);
     job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window));
     job->start();
+}
+
+void restrictLaunchButton(QPushButton *button)
+{
+    if (!KSandbox::isInside()) {
+        return;
+    }
+    button->setEnabled(false);
+    button->setToolTip(i18nc("@info:tooltip",
+                             "Start this application from your application launcher. TarDrop runs "
+                             "sandboxed, so it cannot start host applications itself."));
+}
+
+QStringList droppedLocalFiles(const QMimeData *mime)
+{
+    QStringList paths;
+    if (!mime) {
+        return paths;
+    }
+    // Native builds keep reading the plain URL list, so dropped paths are exactly what they were.
+    const QList<QUrl> urls = KSandbox::isInside()
+        ? KUrlMimeData::urlsFromMimeData(mime, KUrlMimeData::PreferLocalUrls)
+        : mime->urls();
+    for (const QUrl &url : urls) {
+        if (url.isLocalFile()) {
+            paths.append(url.toLocalFile());
+        }
+    }
+    return paths;
 }
 
 } // namespace tardrop::gui

@@ -350,13 +350,7 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *event)
 
 void MainWindow::dropEvent(QDropEvent *event)
 {
-    QStringList paths;
-    const QList<QUrl> urls = event->mimeData()->urls();
-    for (const QUrl &url : urls) {
-        if (url.isLocalFile()) {
-            paths.append(url.toLocalFile());
-        }
-    }
+    const QStringList paths = droppedLocalFiles(event->mimeData());
     if (!paths.isEmpty()) {
         event->acceptProposedAction();
         openArchives(paths);

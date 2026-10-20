@@ -1,0 +1,66 @@
+# Flatpak manifest for TarDrop, used to build the .flatpak bundle attached to GitHub Releases.
+# It is not a Flathub submission. Build it with scripts/build-flatpak.sh; README.md ("Flatpak")
+# explains every permission below and what the sandbox does and does not contain.
+
+id: org.tardrop.TarDrop
+# KDE 6.11 ships Qt 6.11, KDE Frameworks 6 (every framework CMakeLists.txt asks for), libarchive,
+# GCC, CMake, and Ninja, so TarDrop itself is the only C++ module built here.
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+branch: stable
+command: tardrop
+
+finish-args:
+  # Display. X11 is only used where no Wayland compositor is running; ipc is for X11 shared memory.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # The update providers (GitHub Releases, Static URL, Website) fetch release metadata and archives.
+  - --share=network
+  # The install root. TarDrop only ever creates immediate children of this directory.
+  - --filesystem=~/Applications:create
+  # Host-visible launchers. Inside the sandbox XDG_DATA_HOME is private, so the core writes to the
+  # host's data home instead (see paths::dataHome) and needs exactly these three directories there:
+  # the launcher directory, TarDrop's own icon directory, and its records, shared with native builds.
+  - --filesystem=xdg-data/applications:create
+  - --filesystem=xdg-data/icons/TarDrop:create
+  - --filesystem=xdg-data/tardrop:create
+
+modules:
+  # update-desktop-database keeps ~/.local/share/applications/mimeinfo.cache current after an
+  # install, as the native build does; GLib-based desktops (GNOME) read MIME handlers from it.
+  # The KDE Platform runtime ships no copy, so only that one tool is kept from this module.
+  - name: desktop-file-utils
+    buildsystem: meson
+    cleanup:
+      - /bin/desktop-file-edit
+      - /bin/desktop-file-install
+      - /bin/desktop-file-validate
+      - /share
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/desktop-file-utils/releases/desktop-file-utils-0.28.tar.xz
+        sha256: 4401d4e231d842c2de8242395a74a395ca468cd96f5f610d822df33594898a70
+
+  - name: tardrop
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    # The unit tests run inside the build sandbox, which also exercises the Flatpak path handling.
+    run-tests: true
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .git
+          - build
+          - dist
+    post-install:
+      # Exported icons must carry the application ID. This is the Breeze package icon the native
+      # build already uses (Icon=package-x-generic), copied from the SDK so it shows up on GNOME too.
+      - install -Dm644 /usr/share/icons/breeze/mimetypes/64/package-x-generic.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - desktop-file-edit --set-icon=${FLATPAK_ID}
+        ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop

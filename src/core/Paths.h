@@ -12,6 +12,10 @@ namespace tardrop::paths {
 Result<QString> applicationsDir();
 
 /// Returns the standard XDG directory used by Plasma and other launchers.
+///
+/// This and the two functions below always resolve against the *host's* XDG data home, also from
+/// inside Flatpak, because what they hold describes host state: launchers the desktop must see,
+/// and records of what lives in `~/Applications`.
 Result<QString> applicationsDatabaseDir();
 
 /// Returns `~/.local/share/icons`, the XDG root TarDrop stores launcher icons under.

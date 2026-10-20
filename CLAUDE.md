@@ -11,6 +11,7 @@ cmake --build build                                  # build
 ctest --test-dir build --output-on-failure           # run the unit tests
 ctest --test-dir build -R tst_riskassessment         # run a single test executable
 sudo cmake --install build --prefix /usr             # system-wide install
+./scripts/build-flatpak.sh                           # Flatpak bundle -> dist/TarDrop.flatpak
 ```
 
 Requires CMake 3.28+, Ninja, a C++23 compiler (GCC 14+/Clang 18+), Qt 6.6+ (plus QtTest for the
@@ -20,7 +21,13 @@ config or CI in the repo. `compile_commands.json` is exported into `build/` for 
 Tests live in `tests/` (QtTest, one executable per `tst_*.cpp`, `-DBUILD_TESTING=OFF` skips them).
 They cover `tardrop-core` plus `InstallController`, which has no widget dependency; fixtures are
 written in code with libarchive via `tests/ArchiveBuilder.h`. `tst_installflow` points `HOME` and
-the XDG directories at a temporary directory, so it never touches the real `~/Applications`.
+the XDG directories (including `HOST_XDG_DATA_HOME`) at a temporary directory, so it never touches
+the real `~/Applications`. `tst_datapaths` checks whichever data-home branch the environment selects;
+the Flatpak build runs every test inside its sandbox, which covers the Flatpak branch.
+
+The Flatpak manifest is `flatpak/org.tardrop.TarDrop.yml` (KDE Platform 6.11 runtime, plus only
+`update-desktop-database` from desktop-file-utils). It produces a bundle for GitHub Releases, not a
+Flathub submission; README.md ("Flatpak") documents and justifies every permission.
 
 ## Architecture
 
@@ -82,6 +89,10 @@ These are product requirements, not incidental behaviour. Do not "simplify" them
   `InstalledRecord::source_url`/`custom_metadata`. Local-archive installs default to `Manual`.
 * Networking lives only in `Providers`, and only when `Updater` builds a provider from that config.
 * Launcher candidates within 10 points of each other trigger a chooser rather than a guess.
+* Inside Flatpak, launchers, icons, and records still go to the *host's* XDG data home
+  (`paths::dataHome`: `HOST_XDG_DATA_HOME`, else `~/.local/share`), never the sandbox's private one,
+  and the in-app Launch action is disabled (`restrictLaunchButton`) because it would run the program
+  inside TarDrop's sandbox. Do not grant `org.freedesktop.Flatpak`/`systemd1` to work around that.
 
 ## Conventions
 

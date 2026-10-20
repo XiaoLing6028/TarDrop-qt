@@ -1,0 +1,38 @@
+# Builds the TarDrop Flatpak bundle and keeps it as a workflow artifact.
+# It never creates, edits, or publishes a GitHub Release; attaching the bundle stays a manual step.
+name: Flatpak bundle
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+
+      # Run as root so bubblewrap does not depend on the runner allowing unprivileged user
+      # namespaces; the --user installation then lives in root's home on the throwaway runner.
+      - name: Build bundle
+        env:
+          FLATPAK_BUILDER_ARGS: --disable-rofiles-fuse
+        run: sudo --preserve-env=FLATPAK_BUILDER_ARGS ./scripts/build-flatpak.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TarDrop-flatpak
+          path: |
+            dist/TarDrop.flatpak
+            dist/TarDrop.flatpak.sha256
+          if-no-files-found: error

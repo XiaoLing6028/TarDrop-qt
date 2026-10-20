@@ -130,6 +130,7 @@ void RecordsPage::rebuild()
         auto *launch = new QPushButton(QIcon::fromTheme(QStringLiteral("media-playback-start")),
                                        i18nc("@action:button", "Launch"));
         launch->setToolTip(i18nc("@info:tooltip", "Start this application now."));
+        restrictLaunchButton(launch);
         connect(launch, &QPushButton::clicked, this,
                 [this, record] { Q_EMIT launchRequested(record); });
         actions->addWidget(launch);
