@@ -144,7 +144,7 @@ Inside a Flatpak, `XDG_DATA_HOME` points at the app's private `~/.var/app` direc
 desktop launcher scans. TarDrop therefore writes launchers, icons, and records to the host's data
 home (`$XDG_DATA_HOME`, else `~/.local/share`) — the same files a native build writes.
 
-Archives are opened through desktop portals instead of broad file access: **Browse…** uses the file
+Archives are opened through desktop portals instead of broad file access: **Open Archive…** uses the file
 chooser portal, "Open With → TarDrop" in Dolphin or Files forwards the file through the document
 portal, and drag and drop uses the file-transfer portal, which Dolphin and GTK 4 file managers such
 as GNOME Files offer.
@@ -189,7 +189,7 @@ creates or publishes a release.
   out and back in, to rebuild Plasma's application cache.
 * **"Launch" is greyed out:** expected in the Flatpak build; see above.
 * **Dropping an archive does nothing, or it "could not be opened":** the file manager did not export
-  the drag through the file-transfer portal. Use **Browse…**, or allow TarDrop to read your
+  the drag through the file-transfer portal. Use **Open Archive…**, or allow TarDrop to read your
   downloads: `flatpak override --user --filesystem=xdg-download:ro org.tardrop.TarDrop`.
 * **The runtime is missing:** `flatpak install --user flathub org.kde.Platform//6.11`.
 * **Inspect or reset permissions:** `flatpak info --show-permissions org.tardrop.TarDrop` and
