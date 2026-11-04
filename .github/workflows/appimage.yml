@@ -1,0 +1,104 @@
+# Builds the TarDrop AppImage, tests it against a native build of the same commit, runs it on several
+# distributions, and keeps it as a workflow artifact. It never creates, edits, or publishes a GitHub
+# Release; attaching the AppImage to a release stays a manual step.
+name: AppImage
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Compiles, runs the unit tests, and packages inside the pinned builder image.
+      - name: Build AppImage
+        run: ./scripts/build-appimage.sh
+
+      # The same functional scenarios against a native build in the builder image, as the baseline
+      # the AppImage must match. Root in the throwaway container, so the HTTPS check can trust its CA.
+      - name: Native baseline
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" tardrop-appimage-builder:local bash -c '
+            cmake -S /src -B /tmp/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF &&
+            cmake --build /tmp/native &&
+            /src/scripts/test-appimage.sh --functional-only --exe /tmp/native/tardrop \
+                --install-test-ca --results /out/native-results.txt'
+
+      - name: Test AppImage on the runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libglx0 desktop-file-utils
+          sudo ./scripts/test-appimage.sh --install-test-ca --results dist/results-runner.txt \
+              dist/TarDrop-*-x86_64.AppImage
+          diff -u dist/native-results.txt dist/results-runner.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TarDrop-AppImage
+          path: |
+            dist/TarDrop-*-x86_64.AppImage
+            dist/TarDrop-*-x86_64.AppImage.sha256
+            dist/TarDrop-*-x86_64.manifest.txt
+            dist/native-results.txt
+          if-no-files-found: error
+
+  # Clean distribution containers with only what a desktop installation provides (GL dispatch, fonts,
+  # X11/Wayland client libraries) plus the test tools.
+  distributions:
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: fedora
+            image: fedora:latest
+            install: >-
+              dnf -y install python3 openssl binutils procps-ng findutils diffutils
+              libglvnd-egl libglvnd-opengl libglvnd-glx fontconfig freetype harfbuzz libX11
+              libX11-xcb libxcb libSM libICE libwayland-client gmp libcom_err libgpg-error
+              zlib-ng-compat desktop-file-utils
+          - name: arch
+            image: archlinux:latest
+            install: >-
+              pacman -Syu --noconfirm --needed python openssl binutils procps-ng diffutils libglvnd
+              fontconfig freetype2 harfbuzz libx11 libxcb libsm libice wayland gmp e2fsprogs
+              libgpg-error zlib desktop-file-utils
+          - name: debian13
+            image: debian:trixie
+            install: >-
+              apt-get update && apt-get install -y --no-install-recommends ca-certificates python3
+              openssl binutils procps libegl1 libopengl0 libglx0 libfontconfig1 libfreetype6
+              libharfbuzz0b libx11-6 libx11-xcb1 libxcb1 libsm6 libice6 libwayland-client0 libgmp10
+              libcom-err2 libgpg-error0 zlib1g desktop-file-utils
+    container:
+      image: ${{ matrix.image }}
+    name: test (${{ matrix.name }})
+    steps:
+      - name: Install runtime libraries and test tools
+        run: ${{ matrix.install }}
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: TarDrop-AppImage
+          path: dist
+
+      - name: Test AppImage
+        shell: bash
+        run: |
+          chmod +x dist/TarDrop-*-x86_64.AppImage   # artifacts do not keep the executable bit
+          ./scripts/test-appimage.sh --install-test-ca --results results.txt dist/TarDrop-*-x86_64.AppImage
+          diff -u dist/native-results.txt results.txt
