@@ -84,119 +84,143 @@ sudo cmake --install build --prefix /usr
 `tardrop` also accepts archives as command-line arguments, and registers the supported archive MIME
 types, so "Open With → TarDrop" works from Dolphin.
 
-## Flatpak
+## AppImage
 
-TarDrop is also available as a single-file Flatpak bundle, `TarDrop.flatpak`, attached to
-[GitHub Releases](https://github.com/XiaoLing6028/TarDrop-qt/releases). It is not published on
-Flathub. It installs per user, without `sudo`, and works on KDE Plasma and GNOME: TarDrop itself
-and every application it installs show up in Kickoff, KRunner, and the GNOME application overview.
+TarDrop is also available as a single-file AppImage, `TarDrop-<version>-x86_64.AppImage`, attached
+to [GitHub Releases](https://github.com/XiaoLing6028/TarDrop-qt/releases). It needs no installation,
+no root, and no runtime download: Qt 6, the KDE Frameworks, and libarchive are inside the file.
 
-### Setup
-
-You need Flatpak itself. Many distributions, Fedora among them, ship it preinstalled; otherwise
-install it with `sudo dnf install flatpak`, `sudo pacman -S flatpak`, or `sudo apt install flatpak`.
-That is the only step that needs administrator rights. If you have never used Flatpak before, log out and back in
-once after installing it, so your session picks up the directories Flatpak exports launchers to.
-
-The bundle runs on the KDE Platform 6.11 runtime (`org.kde.Platform//6.11`). KDE distributes its
-stable runtimes through Flathub's repository, so the runtime is downloaded from there; TarDrop itself
-is not. The bundle names that repository, and `flatpak install` offers to add it when the runtime is
-missing. To set it up yourself first:
+### Run it
 
 ```bash
-flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.kde.Platform//6.11
+sha256sum -c TarDrop-0.2.0-x86_64.AppImage.sha256   # check it against the .sha256 from the release
+chmod +x TarDrop-0.2.0-x86_64.AppImage
+./TarDrop-0.2.0-x86_64.AppImage                      # archives can be passed as arguments too
 ```
 
-### Install, launch, update, uninstall
+To get TarDrop into your application launcher (and "Open With → TarDrop" for archives), integrate the
+AppImage with [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or
+[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher); the AppImage carries its desktop
+entry (`org.tardrop.TarDrop`), MIME types, and icon. To update TarDrop itself, replace the file with
+the newer release.
+
+The AppImage runs on the host like the native build, not in a sandbox: launchers, icons, and records
+go to the same `~/.local/share` locations, existing records are shared with a native install, and
+**Launch** starts installed applications directly.
+
+### Compatibility
+
+* x86_64 only.
+* glibc 2.38 or newer and libstdc++ from GCC 13.2 or newer (the newest symbols the bundle uses are
+  `GLIBC_2.38` and `GLIBCXX_3.4.32`). It is built on Ubuntu 24.04.
+* Tested: Ubuntu 24.04, Debian 13, Fedora 45, and Arch Linux (all functional checks, see
+  [Testing the AppImage](#testing-the-appimage)), plus X11 and Wayland sessions under Xvfb and Weston.
+  Other distributions that meet the glibc requirement (openSUSE Tumbleweed, Fedora 39+, Ubuntu
+  24.10+) are expected to work but have not been tested.
+* The host provides only what every desktop installation has and what must match the host's
+  drivers and session: glibc, libstdc++/libgcc_s, the GL dispatch libraries (libglvnd: `libEGL`,
+  `libGLX`, `libOpenGL`), `libX11`, `libX11-xcb`, `libxcb`, `libSM`, `libICE`, `libwayland-client`,
+  fontconfig, FreeType, HarfBuzz, zlib, GMP, `libcom_err`, and `libgpg-error`.
+* FUSE: the AppImage mounts itself with `fusermount3`/`fusermount` (package `fuse3`, preinstalled
+  on most desktops). Without it, the runtime says so and falls back to extracting itself to a
+  temporary directory, which only makes start-up slower. `--appimage-extract-and-run` forces that.
+
+### What is bundled, and why
+
+* **Qt 6.11 and KDE Frameworks 6.31** (from KDE neon), including the Wayland, X11, and offscreen
+  platform plugins, the SVG and ICO image plugins, and the Breeze icon theme.
+* **The Plasma platform theme and Breeze style.** On Plasma, Qt selects them from your `kdeglobals`,
+  so TarDrop gets your colour scheme, fonts, and the KDE file dialog exactly like the native build.
+  The host's own copies cannot be loaded: they are built against the host's Qt. KIO's `file` worker
+  and URI filters are included for that dialog.
+* **libarchive** and its compression libraries, so archive handling is identical everywhere.
+* **OpenSSL 3**, used by the update providers. Distributions cannot be relied on for it any more:
+  Fedora 45 ships OpenSSL 4 and has OpenSSL 3 only as an optional compat package. Certificates still
+  come from the host's trust store.
+
+The AppImage's `AppRun` sets no `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH`, `XDG_DATA_DIRS`, or platform
+theme (libraries are found through `$ORIGIN` RPATHs and plugins through `qt.conf`), and it removes the
+`APPIMAGE`, `APPDIR`, `ARGV0`, and `OWD` variables the runtime sets. Programs TarDrop starts (installed
+applications, the file manager, `update-desktop-database`, `kbuildsycoca6`) therefore see exactly the
+environment they would see from the native build; an application started with `APPIMAGE` set would
+otherwise believe it *is* TarDrop's AppImage (Electron's auto-updater would try to replace it).
+
+### Known limitations
+
+* Security fixes in the bundled libraries (libarchive, OpenSSL, Qt) arrive with a new TarDrop
+  AppImage, not with your distribution's updates. Rebuild or download a newer release.
+* Outside Plasma, Qt's own Fusion style and file dialog are used, as with a native build that has
+  no platform theme. Host Qt plugins (other styles, platform themes, the fcitx5 input method) are
+  not loaded; the IBus and compose input methods are bundled.
+* KDE's crash dialog (DrKonqi) is not bundled, so a crash is not reported through it.
+* The bundled Breeze icons are used on every desktop. On GNOME Wayland, Qt draws the window's title
+  bar itself and takes its buttons from the host's Adwaita icon theme.
+
+### Building the AppImage
 
 ```bash
-flatpak install --user ./TarDrop.flatpak      # install for the current user
-flatpak run org.tardrop.TarDrop               # or start "TarDrop" from your application launcher
-flatpak install --user ./TarDrop.flatpak      # update: install a newer bundle over the old one
-flatpak update --user                         # updates the KDE runtime (bundles carry no update URL)
-flatpak uninstall --user org.tardrop.TarDrop  # remove TarDrop
+./scripts/build-appimage.sh    # -> dist/TarDrop-<version>-x86_64.AppImage, .sha256, .manifest.txt
 ```
 
-Check the bundle against the `TarDrop.flatpak.sha256` file from the same release before installing
-it: `sha256sum -c TarDrop.flatpak.sha256`.
+The host needs only bash, an x86_64 machine, Docker with BuildKit, and network access. The script
+builds a builder image from `appimage/Dockerfile` (Ubuntu 24.04, pinned by digest, plus the KDE neon
+repository, whose signing key is vendored in `appimage/`), then re-runs itself in a throwaway
+container with the source tree mounted read-only. Inside, it configures a fresh build directory, runs
+the unit tests, installs into an AppDir, and packages it with pinned releases of linuxdeploy,
+linuxdeploy-plugin-qt, appimagetool, and the AppImage type 2 runtime. Each tool's SHA-256 is pinned in
+the script and verified before it runs; downloads are cached in `.cache/appimage-tools/`. Nothing is
+uploaded anywhere.
 
-Uninstalling the Flatpak removes TarDrop only. The applications it installed, their launchers, and
-its records in `~/.local/share/tardrop` are ordinary files in your home and stay, exactly as with a
-native install; uninstall them from TarDrop first if you want them gone. `--delete-data` additionally
-removes `~/.var/app/org.tardrop.TarDrop`, which only holds TarDrop's window state and caches.
-
-### Permissions
-
-TarDrop's whole job is to put applications and launchers onto the host, so it needs write access
-outside its sandbox. It gets exactly the directories it writes, and nothing else in your home:
-
-| Permission | Why |
+| Variable | Effect |
 | --- | --- |
-| `--filesystem=~/Applications:create` | The install root; TarDrop only creates immediate children of it. |
-| `--filesystem=xdg-data/applications:create` | Per-user launchers that Plasma and GNOME read. |
-| `--filesystem=xdg-data/icons/TarDrop:create` | The launcher icons TarDrop copies out of each package. |
-| `--filesystem=xdg-data/tardrop:create` | The installed-app database and settings, shared with a native install. |
-| `--share=network` | The GitHub Releases, Static URL, and Website update providers. |
-| `--socket=wayland`, `--socket=fallback-x11`, `--share=ipc` | Showing the window. |
+| `OUTPUT_DIR` | Where the AppImage is written (default `dist/`). |
+| `BASE_IMAGE` | Another source for the pinned base image, e.g. a registry mirror of the same digest. |
+| `BUILDER_IMAGE` | Use an already-built builder image instead of building `appimage/Dockerfile`. |
+| `SKIP_TESTS=1` | Do not run the unit tests before packaging. |
+| `DOCKER` | Container engine (default `docker`; Podman has not been tested). |
 
-Inside a Flatpak, `XDG_DATA_HOME` points at the app's private `~/.var/app` directory, which no
-desktop launcher scans. TarDrop therefore writes launchers, icons, and records to the host's data
-home (`$XDG_DATA_HOME`, else `~/.local/share`) — the same files a native build writes.
+Reproducibility: the base image, signing key, and every tool are pinned, and file timestamps come
+from the last commit (`SOURCE_DATE_EPOCH`). KDE neon is a rolling repository without snapshots, so
+its package versions cannot be pinned; each build records every package version it used in
+`dist/TarDrop-<version>-x86_64.manifest.txt` and inside the AppImage at
+`usr/share/tardrop/appimage-build-manifest.txt`.
 
-Archives are opened through desktop portals instead of broad file access: **Open Archive…** uses the file
-chooser portal, "Open With → TarDrop" in Dolphin or Files forwards the file through the document
-portal, and drag and drop uses the file-transfer portal, which Dolphin and GTK 4 file managers such
-as GNOME Files offer.
+The **AppImage** GitHub Actions workflow runs the same script for pull requests, `main`, `v*` tags, or
+on demand, runs the tests below on the runner and on Fedora, Arch, and Debian containers, and keeps
+the AppImage as a workflow artifact. It never creates or publishes a release.
 
-Be aware of what the sandbox does and does not protect. The applications TarDrop installs are not
-sandboxed — they run on the host, with the host's libraries, like any other program in your home.
-TarDrop can create and replace launchers in `~/.local/share/applications`, and a launcher can run
-anything once clicked, so the Flatpak sandbox is not a security boundary around what TarDrop
-installs; TarDrop's own archive checks still are. TarDrop is deliberately *not* given
-`org.freedesktop.Flatpak` (`flatpak-spawn --host`) or `org.freedesktop.systemd1`, so it cannot start
-programs on the host by itself.
-
-### Differences from the native build
-
-* **Launch is unavailable.** From inside the sandbox, an application would start inside TarDrop's
-  sandbox, against the KDE runtime's libraries instead of yours, and fail or misbehave. The button
-  is disabled; start installed applications from your application launcher instead.
-* **Plasma's application menu updates itself.** The native build runs `kbuildsycoca6` after each
-  install; inside the sandbox that would only refresh TarDrop's private cache, so Plasma's `kded6`
-  notices the new launcher on its own. GNOME watches the launcher directory directly.
-* **Archive access goes through portals** (see above), so archives keep a
-  `/run/user/<uid>/doc/…` path inside TarDrop. Only the archive file name is recorded.
-
-### Building the bundle
+### Testing the AppImage
 
 ```bash
-./scripts/build-flatpak.sh            # writes dist/TarDrop.flatpak and dist/TarDrop.flatpak.sha256
+./scripts/test-appimage.sh dist/TarDrop-0.2.0-x86_64.AppImage
 ```
 
-This needs `flatpak` and `flatpak-builder`, and downloads `org.kde.Sdk//6.11` (about 1.2 GB) on the
-first run. The manifest is `flatpak/org.tardrop.TarDrop.yml`; the unit tests run inside the build
-sandbox, which also covers the Flatpak path handling. The **Flatpak bundle** GitHub Actions workflow
-runs the same script for `v*` tags or on demand and keeps the bundle as a workflow artifact; it never
-creates or publishes a release.
+This checks the file format and architecture, the desktop entry, icons, bundled plugins and
+libraries, that every RPATH is `$ORIGIN`-relative and every dependency resolves on the machine, and
+that it runs after being moved to a path with spaces and non-ASCII characters. It then runs real
+installs into throwaway home directories through the command line: tar.gz, tar.xz, and zip installs
+(setuid bits stripped), traversal and absolute-path archives (refused, nothing written), symlink and
+`install.sh` archives (held at the security prompt, the script never run), the environment the
+programs TarDrop starts receive, and an HTTPS update check against a local server whose certificate
+must be rejected until it is trusted. It needs python3 and openssl, and never touches your home.
+
+* `--install-test-ca` adds the test CA to the system trust store for the trusted half of the HTTPS
+  check (root only; removed again on exit). Qt reads only the system store, so this is meant for
+  disposable containers and CI.
+* `--functional-only --exe build/tardrop --results native.txt` runs the same scenarios against a
+  native build; the results of both runs must be identical, which CI checks with `diff`.
 
 ### Troubleshooting
 
-* **TarDrop is missing from the launcher after installing the bundle:** log out and back in once, so
-  `~/.local/share/flatpak/exports/share` is on `XDG_DATA_DIRS`, and check that
-  `flatpak list --user` shows `org.tardrop.TarDrop`.
-* **An installed application does not appear in Plasma:** run `kbuildsycoca6` on the host, or log
-  out and back in, to rebuild Plasma's application cache.
-* **"Launch" is greyed out:** expected in the Flatpak build; see above.
-* **Dropping an archive does nothing, or it "could not be opened":** the file manager did not export
-  the drag through the file-transfer portal. Use **Open Archive…**, or allow TarDrop to read your
-  downloads: `flatpak override --user --filesystem=xdg-download:ro org.tardrop.TarDrop`.
-* **The runtime is missing:** `flatpak install --user flathub org.kde.Platform//6.11`.
-* **Inspect or reset permissions:** `flatpak info --show-permissions org.tardrop.TarDrop` and
-  `flatpak override --user --reset org.tardrop.TarDrop`.
-* **An installed application fails to start:** it runs on the host, so missing libraries are missing
-  on your system, exactly as with the native build. Run its launcher's `Exec` path in a terminal to
-  see the error.
+* **"No suitable fusermount binary found":** install `fuse3`, or run with
+  `--appimage-extract-and-run`; the AppImage also falls back to that by itself.
+* **Nothing happens / it exits at once:** start it from a terminal with
+  `QT_FORCE_STDERR_LOGGING=1`; Qt otherwise sends its messages to the journal. `QT_DEBUG_PLUGINS=1`
+  shows which plugins load.
+* **An installed application does not appear in Plasma:** run `kbuildsycoca6`, or log out and back
+  in, to rebuild Plasma's application cache.
+* **An installed application fails to start:** it runs on the host with the host's libraries, exactly
+  as with the native build. Run its launcher's `Exec` path in a terminal to see the error.
 
 ## Architecture
 

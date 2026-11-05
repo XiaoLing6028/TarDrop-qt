@@ -11,23 +11,41 @@ cmake --build build                                  # build
 ctest --test-dir build --output-on-failure           # run the unit tests
 ctest --test-dir build -R tst_riskassessment         # run a single test executable
 sudo cmake --install build --prefix /usr             # system-wide install
-./scripts/build-flatpak.sh                           # Flatpak bundle -> dist/TarDrop.flatpak
+./scripts/build-appimage.sh                          # AppImage -> dist/TarDrop-<ver>-x86_64.AppImage
+./scripts/test-appimage.sh dist/TarDrop-*.AppImage   # verify the AppImage (format, libs, installs)
 ```
 
 Requires CMake 3.28+, Ninja, a C++23 compiler (GCC 14+/Clang 18+), Qt 6.6+ (plus QtTest for the
 tests), KDE Frameworks 6, and libarchive 3.6+. The build hard-fails on non-Linux. There is no linter
-config or CI in the repo. `compile_commands.json` is exported into `build/` for clangd.
+config. CI (`.github/workflows/appimage.yml`) builds the AppImage, runs the unit tests, and compares
+the AppImage with a native build on several distributions. `compile_commands.json` is exported into
+`build/` for clangd.
 
 Tests live in `tests/` (QtTest, one executable per `tst_*.cpp`, `-DBUILD_TESTING=OFF` skips them).
 They cover `tardrop-core` plus `InstallController`, which has no widget dependency; fixtures are
 written in code with libarchive via `tests/ArchiveBuilder.h`. `tst_installflow` points `HOME` and
 the XDG directories (including `HOST_XDG_DATA_HOME`) at a temporary directory, so it never touches
-the real `~/Applications`. `tst_datapaths` checks whichever data-home branch the environment selects;
-the Flatpak build runs every test inside its sandbox, which covers the Flatpak branch.
+the real `~/Applications`. `tst_datapaths` checks whichever data-home branch the environment selects
+(the Flatpak branch only runs when the tests themselves run inside Flatpak).
 
-The Flatpak manifest is `flatpak/org.tardrop.TarDrop.yml` (KDE Platform 6.11 runtime, plus only
-`update-desktop-database` from desktop-file-utils). It produces a bundle for GitHub Releases, not a
-Flathub submission; README.md ("Flatpak") documents and justifies every permission.
+### AppImage
+
+The release artifact is an AppImage (the Flatpak packaging was dropped). `scripts/build-appimage.sh`
+builds `appimage/Dockerfile` (Ubuntu 24.04 by digest + KDE neon for Qt 6/KF6; noble keeps the glibc
+floor at 2.38) and re-runs itself inside it: clean CMake build, ctest, `cmake --install` into an
+AppDir, then pinned, SHA-256-verified linuxdeploy/plugin-qt/appimagetool/runtime. Rules that matter:
+
+* `appimage/AppRun` must not export `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH`, `XDG_DATA_DIRS`, or a
+  platform theme, and it unsets `APPIMAGE`/`APPDIR`/`ARGV0`/`OWD`: every program TarDrop starts
+  inherits its environment. Libraries resolve through `$ORIGIN` RPATHs and plugins through `qt.conf`.
+* OpenSSL 3 is bundled as a libssl/libcrypto pair (Fedora 45 ships OpenSSL 4); glibc, libstdc++,
+  libglvnd, X11/xcb/Wayland client libraries, fontconfig/FreeType/HarfBuzz stay host-provided.
+* Extra plugins that linuxdeploy-plugin-qt does not deploy (Wayland shell/decoration plugins, the
+  Plasma platform theme, Breeze style, KIO `kio_file`, KWindowSystem backends) are listed in the
+  script; `kioworker` lives in `usr/lib/libexec/kf6` because KIO looks it up relative to its library.
+* `scripts/test-appimage.sh --functional-only --exe <native binary>` runs the same install scenarios
+  natively; the normalised results must be identical to the AppImage's.
+* README.md ("AppImage") documents compatibility, what is bundled, and known limitations.
 
 ## Architecture
 
@@ -89,10 +107,11 @@ These are product requirements, not incidental behaviour. Do not "simplify" them
   `InstalledRecord::source_url`/`custom_metadata`. Local-archive installs default to `Manual`.
 * Networking lives only in `Providers`, and only when `Updater` builds a provider from that config.
 * Launcher candidates within 10 points of each other trigger a chooser rather than a guess.
-* Inside Flatpak, launchers, icons, and records still go to the *host's* XDG data home
-  (`paths::dataHome`: `HOST_XDG_DATA_HOME`, else `~/.local/share`), never the sandbox's private one,
-  and the in-app Launch action is disabled (`restrictLaunchButton`) because it would run the program
-  inside TarDrop's sandbox. Do not grant `org.freedesktop.Flatpak`/`systemd1` to work around that.
+* TarDrop is no longer packaged as a Flatpak, but the code still behaves correctly inside one:
+  launchers, icons, and records go to the *host's* XDG data home (`paths::dataHome`:
+  `HOST_XDG_DATA_HOME`, else `~/.local/share`), never the sandbox's private one, and the in-app
+  Launch action is disabled in any sandbox (`restrictLaunchButton`). The AppImage is not a sandbox;
+  Launch stays enabled there.
 
 ## Conventions
 

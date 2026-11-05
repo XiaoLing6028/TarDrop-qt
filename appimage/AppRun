@@ -1,0 +1,18 @@
+#!/bin/sh
+# Entry point of the TarDrop AppImage.
+#
+# The bundled binaries find their libraries through RPATH and Qt finds its plugins through qt.conf,
+# so nothing here sets LD_LIBRARY_PATH, QT_PLUGIN_PATH, XDG_DATA_DIRS, or a platform theme. That
+# matters because TarDrop starts other programs (installed applications, the file manager,
+# update-desktop-database, kbuildsycoca6): they inherit TarDrop's environment and must get the
+# host's libraries, plugins, and data, exactly as when the native build starts them.
+#
+# For the same reason the variables the AppImage runtime exports are removed before TarDrop starts.
+# TarDrop does not use them, and an application started with APPIMAGE set believes it is itself
+# running as this AppImage; Electron's auto-updater, for one, would then try to replace this file.
+set -eu
+
+here=${APPDIR:-$(dirname "$(readlink -f "$0")")}
+unset APPDIR APPIMAGE ARGV0 OWD
+
+exec "$here/usr/bin/tardrop" "$@"
